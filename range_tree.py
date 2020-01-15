@@ -26,14 +26,17 @@ def height(node):
 
 def split_value(node):
     """This is just the maximum value in the left subtree"""
+
     return 0 if node is None \
         else node.key if isleaf(node) \
         else max(node.key, split_value(node.left), split_value(node.right))
 
 
 def range_tree(values):
-    """Build a 1D Range Tree and returns the root, and the nodes on the same level
-    This is just for indexing. It is possible to augment the structure to store any information."""
+    """ Build a 1D Range Tree and returns the root, and the nodes on the same level
+        This is just for indexing.
+        It is possible to augment the structure to store any information."""
+
     if not values:
         raise ValueError("Empty iterable")
 
@@ -87,17 +90,16 @@ def find_split_node(root, x, y):
         For the range query [x : x'], the node v in a balanced binary search
         tree is a split node if its value x.v satisfies x.v ≥ x and x.v < x'
 
-        FINDSPLITNODE(T,x,x)
-            Input. A tree T and two values x and x' with x < x'.
-            Output. The node ν where the paths to x and x split, or the leaf where both
-            paths end.
-            1. ν ← root(T)
+        FIND_SPLIT_NODE(T,x,x)
+            Input: A tree T and two values x and x' with x < x'.
+            Outpu: The node ν where the paths to x and x split, or the leaf where both paths end.
+            1. ν <- root(T)
             2. while ν is not a leaf and (x'<= x_v.key or x > x_v.key )
             3.      do if x'<=x_v.key
             4.      then ν <- leftchild(ν)
             5.      else ν <- rightchild(ν)
             6. return ν
-        """
+    """
 
     v = root
     while not isleaf(v) and (v.key >= y or v.key < x):
@@ -106,11 +108,13 @@ def find_split_node(root, x, y):
 
 
 def query_range_tree(root, i, j):
-    """Querying a 1D Range Tree.
+    """ Queries a 1D Range Tree.
+
         Let P be a set of n points in 1-D space. The set P
         can be stored in a balanced binary search tree, which uses O(n) storage and
         has O(n log n) construction time, such that the points in a query range can be
         reported in time O(k + log n), where k is the number of reported points"""
+
     if i > j:
         i, j = j, i
 
@@ -148,17 +152,12 @@ def query_range_tree(root, i, j):
 
 
 if __name__ == '__main__':
-    from pprint import pprint
     points = [3, 10, 19, 23, 30, 37, 45, 59, 62, 70, 80, 89, 100, 105]
-    rtree, levels_ = range_tree(points)
-    vals = [list(map(lambda x: x.key, values)) for values in levels_]
-    vals.reverse()
-    pprint(vals)
+    rtree, _ = range_tree(points)
+    # vals = [list(map(lambda x: x.key, values)) for values in levels_]
+    # vals.reverse()
+    # pprint(vals)
 
     rep = query_range_tree(rtree, 0, 120)
-    gen = report(rep)
-    try:
-        while True:
-            print(next(gen))
-    except StopIteration:
-        pass
+    gen = list(report(rep))
+    print(gen)
