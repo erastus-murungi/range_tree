@@ -18,6 +18,7 @@ class Node:
 
 
 class RangeTree1D:
+    """A 1D Range Tree."""
     INF = maxsize
 
     def __init__(self, values):
@@ -52,7 +53,7 @@ class RangeTree1D:
             return Leaf(values[0], None)
 
         levels = [leaves]
-        # n + n/2 + n/4 + n/8 ... -> 0 ≅ 2n  (Geometric summation) = O(n)
+        # n + n/2 + n/4 + n/8 + ... + 1 ≅ 2n  (Geometric summation) = O(n)
         while (n := len(leaves)) > 1:
             nodes = []
             for i in range(1, n, 2):
