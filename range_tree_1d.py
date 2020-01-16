@@ -43,7 +43,7 @@ class RangeTree1D:
         elif self.isleaf(node):
             return get(node.point)
         else:
-            return max(get(node.point), self.split_value(node.left, get), self.split_value(node.right, get))
+            return max(node.point, self.split_value(node.left, get), self.split_value(node.right, get))
 
     def build_range_tree(self, values, axis=0) -> Tuple[Union[Leaf, Node], List]:
         """ Build a 1D Range Tree from the bottom up and returns the root, and the nodes on the same level.
@@ -56,7 +56,7 @@ class RangeTree1D:
         if len(values) == 1:
             levels = [[Leaf(values[0], None)]]
             return levels[-1][0], levels
-        getter = lambda y: y if not isinstance(values[0], Iterable) else itemgetter(axis)
+        getter = itemgetter(axis) if isinstance(values[0], Iterable) else lambda y: y
 
         # O(n log n) because of sorting
         leaves = list(map(lambda val: Leaf(val, None), sorted(values, key=getter)))
@@ -180,7 +180,7 @@ class RangeTree1D:
 
 
 if __name__ == '__main__':
-    points = [1, 3]
+    points = [4]
     rtree = RangeTree1D(points)
     print(rtree)
     rep = rtree[4:4]
