@@ -86,20 +86,23 @@ class RangeTree(ABC):
                     yield from __report_helper(n.right)
 
         for node in output:
-            if self.isleaf(node):
-                yield node.point
+            if type(node) == tuple:
+                yield node
             else:
-                yield from __report_helper(node)
+                if self.isleaf(node):
+                    yield node.point
+                else:
+                    yield from __report_helper(node)
 
-    def find_split_node(self, x, y):
+    def find_split_node(self, x, y, getpoint=lambda y: y.point):
         """ Finds and returns the split node
             For the range query [x : x'], the node v in a balanced binary search
             tree is a split node if its value x.v satisfies x.v ≥ x and x.v < x'.
         """
 
         v = self.root
-        while not self.isleaf(v) and (v.point >= y or v.point < x):
-            v = v.left if y <= v.point else v.right
+        while not self.isleaf(v) and (getpoint(v) >= y or getpoint(v) < x):
+            v = v.left if y <= getpoint(v) else v.right
         return v
 
     def __repr__(self) -> str:
