@@ -25,14 +25,14 @@ class RangeTree1D(RangeTree):
     INF = maxsize
 
     def __init__(self, values, axis=0):
-        super(RangeTree1D, self).__init__()
+        super().__init__()
         self.root, self.levels = self.build_range_tree(values, axis)
 
     @staticmethod
     def isleaf(node) -> bool:
         return type(node) == Leaf
 
-    def build_range_tree(self, values, axis=0) -> Tuple[Union[Leaf, Node], List]:
+    def build_range_tree(self, values, axis) -> Tuple[Union[Leaf, Node], List]:
         """ Build a 1D Range Tree from the bottom up and returns the root, and the nodes on the same level.
             This is just for indexing.
             It is possible to augment the structure to store any information.
@@ -66,7 +66,7 @@ class RangeTree1D(RangeTree):
         # Total running time is: O(n log n)
         return levels[-1][0], levels
 
-    def query_range_tree(self, i, j) -> List:
+    def query_range_tree1d(self, i, j, get_point=lambda w: w.point) -> List:
         """ Queries a 1D Range Tree.
 
             Let P be a set of n points in 1-D space. The set P
@@ -82,24 +82,24 @@ class RangeTree1D(RangeTree):
         v_split = self.find_split_node(i, j)
         if self.isleaf(v_split):
             # check if the point in v_split
-            if i <= v_split.point <= j:  # inclusive version
+            if i <= get_point(v_split) < j:  # inclusive version
                 output.append(v_split)
         else:
             v = v_split.left
             while not self.isleaf(v):
-                if v.point >= i:
+                if get_point(v) >= i:
                     # report right subtree
                     output.append(v.right)
                     v = v.left
                 else:
                     v = v.right
             # v is now a leaf
-            if v.point >= i:
+            if i <= get_point(v) < j:
                 output.append(v)
             # now we follow right side
             v = v_split.right
             while not self.isleaf(v):
-                if v.point < j:
+                if get_point(v) < j:
                     # report left subtree
                     output.append(v.left)
                     # it is possible to traverse to an external node
@@ -109,7 +109,7 @@ class RangeTree1D(RangeTree):
                 else:
                     v = v.left
             # check whether this point should be included too
-            if v.point < j:
+            if i <= get_point(v) < j:
                 output.append(v)
         return output
 
@@ -129,13 +129,33 @@ class RangeTree1D(RangeTree):
         if start > stop:
             raise IndexError("make sure start <= stop")
 
-        return self.query_range_tree(start, stop)
+        return self.query_range_tree1d(start, stop)
+
+
+def brute(points, x1, x2):
+    for point in points:
+        if x1 <= point < x2:
+            yield point
 
 
 if __name__ == '__main__':
-    points = [4, 6, 8, 100000]
-    rtree = RangeTree1D(points)
-    rep = rtree[:100001]
-    gen = list(rtree.report(rep))
-    print(gen)
-    print(rtree)
+    from random import randint
+
+    lim = 400
+
+    def randy():
+        yield randint(0, lim)
+
+    num_rounds = 20
+    num_points = 100
+    x1, x2 = 58, 300
+
+    for _ in range(num_rounds):
+        vals = [next(randy()) for _ in range(num_points)]
+        rtree = RangeTree1D(vals)
+
+        m = len(list(brute(vals, x1, x2)))
+        rep = rtree[x1:x2]
+        n = len(list(rtree.report(rep)))
+        if n != m:
+            raise ValueError()
