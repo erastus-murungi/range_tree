@@ -3,7 +3,7 @@ from typing import Union, Tuple, Callable, List
 from sys import maxsize
 from operator import itemgetter
 from collections.abc import Iterable
-from pprint import PrettyPrinter
+from ptree import printtree
 
 
 @dataclass
@@ -180,10 +180,8 @@ class RangeTree1D:
 
 
 if __name__ == '__main__':
-    points = [4]
+    points = [4, 6]
     rtree = RangeTree1D(points)
-    print(rtree)
-    rep = rtree[4:4]
+    rep = rtree[:]
     gen = list(rtree.report(rep))
-    printer = PrettyPrinter(indent=4, depth=6)
-    printer.pprint(gen)
+    printtree(rtree)
