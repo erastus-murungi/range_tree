@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Union, Tuple, Callable, List
+from typing import Union, Tuple, List
 from sys import maxsize
 from operator import itemgetter
 from collections.abc import Iterable
-from ptree import printtree
+from rangetree import RangeTree
 
 
 @dataclass
@@ -20,30 +20,17 @@ class Node:
     parent: Union["Node", None]
 
 
-class RangeTree1D:
+class RangeTree1D(RangeTree):
     """A 1D Range Tree."""
     INF = maxsize
 
     def __init__(self, values, axis=0):
+        super(RangeTree1D, self).__init__()
         self.root, self.levels = self.build_range_tree(values, axis)
 
     @staticmethod
     def isleaf(node) -> bool:
         return type(node) == Leaf
-
-    def height(self, node) -> int:
-        return -1 if node is None else 0 if self.isleaf(node) else max(self.height(node.left),
-                                                                       self.height(node.right)) + 1
-
-    def split_value(self, node, get: Callable) -> float:
-        """This is just the maximum value in the left subtree"""
-
-        if node is None:
-            return 0
-        elif self.isleaf(node):
-            return get(node.point)
-        else:
-            return max(node.point, self.split_value(node.left, get), self.split_value(node.right, get))
 
     def build_range_tree(self, values, axis=0) -> Tuple[Union[Leaf, Node], List]:
         """ Build a 1D Range Tree from the bottom up and returns the root, and the nodes on the same level.
@@ -78,37 +65,6 @@ class RangeTree1D:
 
         # Total running time is: O(n log n)
         return levels[-1][0], levels
-
-    def report(self, output: list):
-        """Generates the nodes in the subtrees in the order in which they were found."""
-
-        def __report_helper(n):
-            if n is not None:
-                if self.isleaf(n.left):
-                    yield n.left.point
-                else:
-                    yield from __report_helper(n.left)
-                if self.isleaf(n.right):
-                    yield n.right.point
-                else:
-                    yield from __report_helper(n.right)
-
-        for node in output:
-            if self.isleaf(node):
-                yield node.point
-            else:
-                yield from __report_helper(node)
-
-    def find_split_node(self, x, y) -> Node:
-        """ Finds and returns the split node
-            For the range query [x : x'], the node v in a balanced binary search
-            tree is a split node if its value x.v satisfies x.v ≥ x and x.v < x'.
-        """
-
-        v = self.root
-        while not self.isleaf(v) and (v.point >= y or v.point < x):
-            v = v.left if y <= v.point else v.right
-        return v
 
     def query_range_tree(self, i, j) -> List:
         """ Queries a 1D Range Tree.
@@ -157,9 +113,6 @@ class RangeTree1D:
                 output.append(v)
         return output
 
-    def __repr__(self) -> str:
-        return repr(self.root)
-
     def __getitem__(self, item: slice):
         """Assumes item is a slice object.
         To search for a specific value:
@@ -180,8 +133,9 @@ class RangeTree1D:
 
 
 if __name__ == '__main__':
-    points = [4, 6]
+    points = [4, 6, 8, 100000]
     rtree = RangeTree1D(points)
-    rep = rtree[:]
+    rep = rtree[:100001]
     gen = list(rtree.report(rep))
-    printtree(rtree)
+    print(gen)
+    print(rtree)
