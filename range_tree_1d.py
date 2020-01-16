@@ -46,9 +46,10 @@ class RangeTree1D:
             return max(get(node.point), self.split_value(node.left, get), self.split_value(node.right, get))
 
     def build_range_tree(self, values, axis=0) -> Tuple[Union[Leaf, Node], List]:
-        """ Build a 1D Range Tree and returns the root, and the nodes on the same level
+        """ Build a 1D Range Tree from the bottom up and returns the root, and the nodes on the same level.
             This is just for indexing.
-            It is possible to augment the structure to store any information."""
+            It is possible to augment the structure to store any information.
+        """
 
         if not values:
             raise ValueError("Empty iterable")
@@ -101,17 +102,7 @@ class RangeTree1D:
     def find_split_node(self, x, y) -> Node:
         """ Finds and returns the split node
             For the range query [x : x'], the node v in a balanced binary search
-            tree is a split node if its value x.v satisfies x.v ≥ x and x.v < x'
-
-            FIND_SPLIT_NODE(T,x,x)
-                Input: A tree T and two values x and x' with x < x'.
-                Outpu: The node ν where the paths to x and x split, or the leaf where both paths end.
-                1. ν <- root(T)
-                2. while ν is not a leaf and (x'<= x_v.key or x > x_v.key )
-                3.      do if x'<=x_v.key
-                4.      then ν <- leftchild(ν)
-                5.      else ν <- rightchild(ν)
-                6. return ν
+            tree is a split node if its value x.v satisfies x.v ≥ x and x.v < x'.
         """
 
         v = self.root
@@ -170,10 +161,10 @@ class RangeTree1D:
         return repr(self.root)
 
     def __getitem__(self, item: slice):
-        """Assumes item is a slice object
+        """Assumes item is a slice object.
         To search for a specific value:
-        Use that value in both endpoints. eg to search for 5, query [5:5]
-        Returns the items in the range
+        Use that value in both endpoints. eg to search for 5, query [5:5].
+        Returns the items in the range.
         """
         assert isinstance(item, slice), print(item)
 
