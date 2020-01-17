@@ -126,14 +126,14 @@ def brute_algorithm(coords, x1, x2, y1, y2):
 
 if __name__ == '__main__':
     from random import randint
-    lim = 1000
+    lim = 100_000
 
     def randy():
         yield randint(0, lim)
 
-    test_rounds = 10
-    num_coords = 30
-    x1, x2, y1, y2 = 0, 800, 0, 500
+    test_rounds = 300
+    num_coords = 100
+    x1, x2, y1, y2 = 0, 10_000, 0, 50_000
     for _ in range(test_rounds):
         coordinates = [tuple([next(randy()), next(randy())]) for _ in range(num_coords)]
         r2d = RangeTree2D(coordinates)
@@ -143,5 +143,6 @@ if __name__ == '__main__':
         range_list = list(gen)
         brute = list(brute_algorithm(coordinates, x1, x2, y1, y2))
         # print(range_list, '\n', brute)
+        print(len(brute), len(range_list))
         if len(range_list) != len(brute):
             raise ValueError()
