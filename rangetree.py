@@ -21,11 +21,17 @@ def trickle_down(node, i, direction):
 
     next_i = n1[1][direction]
 
-    while n1[1][direction] == -1:
+    while n1[1][direction] == -1 and next_i != 0:
         i -= 1
         n1 = node.assoc[i]
         next_i = node.assoc[i][1][direction]
     return next_i
+
+
+def brute_algorithm(coords, x1, x2, y1, y2):
+    for x, y in coords:
+        if x1 <= x < x2 and y1 <= y < y2:
+            yield x, y
 
 
 LEFT, RIGHT = 0, 1
