@@ -1,4 +1,34 @@
 from abc import *
+from operator import itemgetter
+
+
+by_x = itemgetter(0)
+by_y = itemgetter(1)
+
+
+def get_y(item):
+    return item[0][1]
+
+
+def get_x(item):
+    return item[0][0]
+
+
+def trickle_down(node, i, direction):
+    if node is None:
+        return i
+    n1 = node.assoc[i]
+
+    next_i = n1[1][direction]
+
+    while n1[1][direction] == -1:
+        i -= 1
+        n1 = node.assoc[i]
+        next_i = node.assoc[i][1][direction]
+    return next_i
+
+
+LEFT, RIGHT = 0, 1
 
 
 class RangeTree(ABC):
