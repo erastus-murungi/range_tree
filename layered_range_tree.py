@@ -66,16 +66,13 @@ class LayeredRangeTree(RangeTree):
         """Set the pointers in the array stored at the parent. p_assoc is the y-sorted array which is
         split to two assoc_child arrays"""
 
-        nl, n = len(assoc_child), len(p_assoc)
-        i, j = n - 1, nl - 1
-        while j >= 0 and i >= 0:
-            if getpoint(p_assoc[i]) <= getpoint(assoc_child[j]):
-                p_assoc[i][1][direction] = j
-                if getpoint(assoc_child[j - 1]) == getpoint(p_assoc[i - 1]):
-                    j -= 1
-                i -= 1
-            else:
-                i -= 1
+        j = 0
+        for i in range(len(p_assoc)):
+            if getpoint(p_assoc[i]) > getpoint(assoc_child[j]):
+                j += 1
+            if j == len(assoc_child):
+                break
+            p_assoc[i][1][direction] = j
 
     @staticmethod
     def bin_search_low(A, getpoint, x: float):
@@ -166,36 +163,27 @@ class LayeredRangeTree(RangeTree):
         return output
 
 
-def brute_algorithm(coords, x1, x2, y1, y2):
-    for x, y in coords:
-        if x1 <= x < x2 and y1 <= y < y2:
-            yield x, y
-
-
 if __name__ == '__main__':
     from random import randint
 
-    lim = 200
+    lim = 1000
 
 
     def randy():
         yield randint(0, lim)
 
 
-    test_rounds = 100_000
-    num_coords = 8
-    x1, x2, y1, y2 = 0, 150, 0, 100
+    test_rounds = 10000
+    num_coords = 7000
+    x1, x2, y1, y2 = 0, 400, 0, 1000
     for _ in range(test_rounds):
-        # coordinates = [tuple([next(randy()), next(randy())]) for _ in range(num_coords)]
-        # coordinates = [(2, 19), (5, 80), (7, 10), (8, 37), (12, 3), (15, 99), (17, 62),
-        #                (21, 49), (33, 30), (41, 95), (52, 23), (58, 59), (67, 89), (93, 70)]
-        coordinates = [(95, 0), (117, 63), (35, 175), (82, 186), (84, 60), (114, 63), (200, 63), (157, 190)]
-
+        coordinates = [tuple([next(randy()), next(randy())]) for _ in range(num_coords)]
         r2d = LayeredRangeTree(coordinates)
-        print(r2d)
+        # print(r2d)
         rep = r2d.query_layered_range_tree(x1, x2, y1, y2)
         range_list = list(rep)
         brute = list(brute_algorithm(coordinates, x1, x2, y1, y2))
+        print(len(brute), len(range_list))
         # print(range_list, '\n', brute)
         if len(range_list) != len(brute):
             print(len(brute), len(range_list))
