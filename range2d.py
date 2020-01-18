@@ -1,7 +1,7 @@
 from range1d import RangeTree1D, Node, Leaf
 from typing import Union
 from dataclasses import dataclass
-from rangetree import RangeTree
+from rangetree import RangeTree, brute_algorithm
 from functools import partial
 
 __author__ = 'Erastus Murungi'
@@ -28,19 +28,20 @@ class RangeTree2D(RangeTree):
     def isleaf(node):
         return type(node) == Leaf2D or type(node) == Leaf
 
-    def build_range_tree2d(self, points, parent=None) -> Union[Leaf2D, Node2D, None]:
-        """ Build a 2D Range Tree recursively """
+    def build_range_tree2d(self, points) -> Union[Leaf2D, Node2D, None]:
+        """ Build a 2D Range Tree recursively.
+         It is compressed so that Internal nodes also contain some pointers"""
         if points:
             y_t = RangeTree1D(points, axis=1)
             # base case
             if len(points) == 1:
-                v = Leaf2D(points[0], parent, y_t)  # double information storage
+                v = Leaf2D(points[0], y_t)  # double information storage
                 return v
             else:
                 mid = (len(points)) >> 1
-                v = Node2D(None, None, points[mid], parent, y_t)
-                v_left = self.build_range_tree2d(points[:mid], parent=v)
-                v_right = self.build_range_tree2d(points[mid + 1:], parent=v)
+                v = Node2D(None, None, points[mid], y_t)
+                v_left = self.build_range_tree2d(points[:mid])
+                v_right = self.build_range_tree2d(points[mid + 1:])
                 v.left = v_left
                 v.right = v_right
                 return v
@@ -118,22 +119,16 @@ class RangeTree2D(RangeTree):
         return w.point[axis]
 
 
-def brute_algorithm(coords, x1, x2, y1, y2):
-    for x, y in coords:
-        if x1 <= x < x2 and y1 <= y < y2:
-            yield x, y
-
-
 if __name__ == '__main__':
     from random import randint
-    lim = 100_000
+    lim = 10000
 
     def randy():
         yield randint(0, lim)
 
     test_rounds = 300
-    num_coords = 100
-    x1, x2, y1, y2 = 0, 10_000, 0, 50_000
+    num_coords = 10000
+    x1, x2, y1, y2 = 0, 1000, 0, 2000
     for _ in range(test_rounds):
         coordinates = [tuple([next(randy()), next(randy())]) for _ in range(num_coords)]
         r2d = RangeTree2D(coordinates)
