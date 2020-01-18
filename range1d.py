@@ -9,7 +9,6 @@ from rangetree import RangeTree
 @dataclass
 class Leaf:
     point: Union[Tuple, float]
-    parent: Union["Node", None]
 
 
 @dataclass
@@ -17,7 +16,6 @@ class Node:
     left: Union[Leaf, "Node", None]
     right: Union[Leaf, "Node", None]
     point: float
-    parent: Union["Node", None]
 
 
 class RangeTree1D(RangeTree):
@@ -41,25 +39,21 @@ class RangeTree1D(RangeTree):
         if not values:
             raise ValueError("Empty iterable")
         if len(values) == 1:
-            levels = [[Leaf(values[0], None)]]
+            levels = [[Leaf(values[0])]]
             return levels[-1][0], levels
         getter = itemgetter(axis) if isinstance(values[0], Iterable) else lambda y: y
 
         # O(n log n) because of sorting
-        leaves = list(map(lambda val: Leaf(val, None), sorted(values, key=getter)))
+        leaves = list(map(lambda val: Leaf(val), sorted(values, key=getter)))
         levels = [leaves]
         # n + n/2 + n/4 + n/8 + ... + 1 ≅ 2n  (Geometric summation) = O(n)
         while (n := len(leaves)) > 1:
             nodes = []
             for i in range(1, n, 2):
                 l, r = leaves[i - 1], leaves[i]
-                x = Node(l, r, self.split_value(l, getter), None)
-                l.parent = r.parent = x
-                nodes.append(x)
+                nodes.append(Node(l, r, self.split_value(l, getter)))
             if n & 1:  # if odd
-                x = Node(leaves[n - 1], None, self.split_value(leaves[n - 1], getter), None)
-                nodes.append(x)
-                leaves[n - 1].parent = x
+                nodes.append(Node(leaves[n - 1], None, self.split_value(leaves[n - 1], getter)))
             leaves = nodes
             levels.append(leaves)
 
@@ -68,7 +62,6 @@ class RangeTree1D(RangeTree):
 
     def query_range_tree1d(self, i, j, get_point=lambda w: w.point) -> List:
         """ Queries a 1D Range Tree.
-
             Let P be a set of n points in 1-D space. The set P
             can be stored in a balanced binary search tree, which uses O(n) storage and
             has O(n log n) construction time, such that the points in a query range can be
@@ -141,20 +134,20 @@ def brute(points, x1, x2):
 if __name__ == '__main__':
     from random import randint
 
-    lim = 400
+    lim = 1000
 
     def randy():
         yield randint(0, lim)
 
-    num_rounds = 20
+    num_rounds = 10000
     num_points = 100
-    x1, x2 = 58, 300
+    x1, x2 = 400, 600
 
     for _ in range(num_rounds):
-        vals = [next(randy()) for _ in range(num_points)]
-        rtree = RangeTree1D(vals)
+        points = [next(randy()) for _ in range(num_points)]
+        rtree = RangeTree1D(points)
 
-        m = len(list(brute(vals, x1, x2)))
+        m = len(list(brute(points, x1, x2)))
         rep = rtree[x1:x2]
         n = len(list(rtree.report(rep)))
         if n != m:
