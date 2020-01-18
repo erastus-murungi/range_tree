@@ -4,6 +4,7 @@ from rangetree import *
 from operator import itemgetter
 
 LEFT, RIGHT = 0, 1
+COORD_INDEX, POINTER_INDEX = 0, 1
 
 
 @dataclass
@@ -126,10 +127,10 @@ class LayeredRangeTree(RangeTree):
         return next_i
 
     def get_y(self, item):
-        return item[0][self.depth + 1]
+        return item[COORD_INDEX][self.depth + 1]
 
     def get_x(self, item):
-        return item[0][self.depth]
+        return item[COORD_INDEX][self.depth]
 
     def query_layered_range_tree(self, x1, x2, y1, y2):
         if y1 > y2:
