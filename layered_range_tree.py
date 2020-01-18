@@ -1,6 +1,9 @@
 from range1d import Node, Leaf
 from dataclasses import dataclass
 from rangetree import *
+from operator import itemgetter
+
+LEFT, RIGHT = 0, 1
 
 
 @dataclass
@@ -16,8 +19,11 @@ class Leaf2D(Leaf):
 class LayeredRangeTree(RangeTree):
     """Layered Range Tree with fractional cascading."""
 
-    def __init__(self, values):
+    def __init__(self, values, depth=0):
         super().__init__()
+        self.depth = depth
+        self.by_x = itemgetter(depth)
+        self.by_y = itemgetter(depth + 1)
         self.root: Node2D = self.build_layered_range_tree(values)
 
     @staticmethod
@@ -25,8 +31,8 @@ class LayeredRangeTree(RangeTree):
         return type(node) == Leaf or type(node) == Leaf2D
 
     def build_layered_range_tree(self, values):
-        points = sorted(values, key=by_x)
-        assoc_root = list(map(lambda w: [w, [-1, -1]], sorted(points, key=by_y)))
+        points = sorted(values, key=self.by_x)
+        assoc_root = list(map(lambda w: [w, [-1, -1]], sorted(points, key=self.by_y)))
         return self.build_layered_range_tree_helper(points, assoc_root)
 
     def build_layered_range_tree_helper(self, points, assoc, parent=None):
@@ -43,11 +49,11 @@ class LayeredRangeTree(RangeTree):
                 mid = (len(points)) >> 1
 
                 # prep the cascaded points
-                assoc_left = list(map(lambda w: [w, [-1, -1]], sorted(points[:mid], key=by_y)))
-                assoc_right = list(map(lambda w: [w, [-1, -1]], sorted(points[mid:], key=by_y)))
+                assoc_left = list(map(lambda w: [w, [-1, -1]], sorted(points[:mid], key=self.by_y)))
+                assoc_right = list(map(lambda w: [w, [-1, -1]], sorted(points[mid:], key=self.by_y)))
 
-                self.fractional_cascade(assoc, assoc_left, get_y, LEFT)
-                self.fractional_cascade(assoc, assoc_right, get_y, RIGHT)
+                self.fractional_cascade(assoc, assoc_left, self.get_y, LEFT)
+                self.fractional_cascade(assoc, assoc_right, self.get_y, RIGHT)
 
                 # close modifications
                 assoc = list(map(lambda y: (y[0], tuple(y[1])), assoc))
@@ -91,8 +97,7 @@ class LayeredRangeTree(RangeTree):
                 high = mid - 1
         return low
 
-    @staticmethod
-    def filter_by_y(node, i, y2):
+    def filter_by_y(self, node, i, y2):
         """Find the values which are less than y"""
         assert i is not None
         if i >= len(node.assoc) or i is None:
@@ -101,10 +106,30 @@ class LayeredRangeTree(RangeTree):
             h = i
             n = len(node.assoc) - i
             sub = []
-            while h < n and get_y(node.assoc[h]) < y2:
+            while h < n and self.get_y(node.assoc[h]) < y2:
                 sub.append(node.assoc[h][0])
                 h += 1
             return sub
+    
+    @staticmethod
+    def trickle_down(node, i, direction):
+        if node is None:
+            return i
+        n1 = node.assoc[i]
+
+        next_i = n1[1][direction]
+
+        while n1[1][direction] == -1 and next_i != 0:
+            i -= 1
+            n1 = node.assoc[i]
+            next_i = node.assoc[i][1][direction]
+        return next_i
+
+    def get_y(self, item):
+        return item[0][self.depth + 1]
+
+    def get_x(self, item):
+        return item[0][self.depth]
 
     def query_layered_range_tree(self, x1, x2, y1, y2):
         if y1 > y2:
@@ -113,52 +138,52 @@ class LayeredRangeTree(RangeTree):
         output = []
 
         v_split = self.find_split_node(x1, x2)
-        v_i = self.bin_search_low(v_split.assoc, get_y, y1)
+        v_i = self.bin_search_low(v_split.assoc, self.get_y, y1)
 
         i = v_i
         if self.isleaf(v_split):
             # check if the point in v_split, leaves have no pointers
-            if x1 <= by_x(v_split.point) < x2 and y1 <= by_y(v_split.point) < y2:
+            if x1 <= self.by_x(v_split.point) < x2 and y1 <= self.by_y(v_split.point) < y2:
                 output.append(v_split.point)
         else:
-            i = trickle_down(v_split, i, LEFT)
+            i = self.trickle_down(v_split, i, LEFT)
             v = v_split.left
 
             while not self.isleaf(v):
                 if v.point >= x1:
                     # report right subtree
-                    a = trickle_down(v, i, RIGHT)
+                    a = self.trickle_down(v, i, RIGHT)
                     subset = self.filter_by_y(v.right, a, y2)
                     output += subset
 
-                    i = trickle_down(v, i, LEFT)
+                    i = self.trickle_down(v, i, LEFT)
                     v = v.left
                 else:
-                    i = trickle_down(v, i, RIGHT)
+                    i = self.trickle_down(v, i, RIGHT)
                     v = v.right
 
             # v is now a leaf
-            if y1 <= by_y(v.point) < y2 and x1 <= by_x(v.point) < x2:
+            if y1 <= self.by_y(v.point) < y2 and x1 <= self.by_x(v.point) < x2:
                 output.append(v.point)
             # now we follow right side
-            i = trickle_down(v_split, v_i, RIGHT)
+            i = self.trickle_down(v_split, v_i, RIGHT)
             v = v_split.right
             while v is not None and not self.isleaf(v):
                 if v.point < x2:
                     # report left subtree
-                    a = trickle_down(v, i, LEFT)
+                    a = self.trickle_down(v, i, LEFT)
                     subset = self.filter_by_y(v.left, a, y2)
                     output += subset
 
-                    i = trickle_down(v, i, RIGHT)
+                    i = self.trickle_down(v, i, RIGHT)
                     v = v.right
 
                 else:
-                    i = trickle_down(v, i, LEFT)
+                    i = self.trickle_down(v, i, LEFT)
                     v = v.left
 
             # check whether this point should be included too
-            if v is not None and y1 <= by_y(v.point) < y2 and x1 <= by_x(v.point) < x2:
+            if v is not None and y1 <= self.by_y(v.point) < y2 and x1 <= self.by_x(v.point) < x2:
                 output.append(v.point)
         return output
 
@@ -166,7 +191,7 @@ class LayeredRangeTree(RangeTree):
 if __name__ == '__main__':
     from random import randint
 
-    lim = 1000
+    lim = 100000
 
 
     def randy():
@@ -174,8 +199,8 @@ if __name__ == '__main__':
 
 
     test_rounds = 10000
-    num_coords = 7000
-    x1, x2, y1, y2 = 0, 400, 0, 1000
+    num_coords = 70000
+    x1, x2, y1, y2 = 0, 40000, 0, 50000
     for _ in range(test_rounds):
         coordinates = [tuple([next(randy()), next(randy())]) for _ in range(num_coords)]
         r2d = LayeredRangeTree(coordinates)
