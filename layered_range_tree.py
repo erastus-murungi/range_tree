@@ -127,6 +127,8 @@ class LayeredRangeTree(RangeTree):
         return item[COORD_INDEX][self.depth]
 
     def query_layered_range_tree(self, x1, x2, y1, y2):
+        if x1 > x2:
+            x1, x2 = x2, x1
         if y1 > y2:
             y1, y2 = y2, y1
 
@@ -182,13 +184,14 @@ class LayeredRangeTree(RangeTree):
             # check whether this point should be included too
             if v is not None and self.isleaf(v) and y1 <= self.by_y(v.point) < y2 and x1 <= self.by_x(v.point) < x2:
                 output.append(v.point)
+
         return output
 
 
 if __name__ == '__main__':
     from random import randint
 
-    lim = 200
+    lim = 2000
 
 
     def randy():
@@ -196,13 +199,13 @@ if __name__ == '__main__':
 
 
     test_rounds = 100000
-    num_coords = 100
-    x1, x2, y1, y2 = 20, 120, 30, 80
+    num_coords = 1000
+    x1, x2, y1, y2 = 20, 1200, 300, 400
     for _ in range(test_rounds):
         coordinates = [tuple([next(randy()), next(randy())]) for _ in range(num_coords)]
         # coordinates = [(64, 47), (37, 11), (21, 89), (41, 80), (73, 100), (26, 47)]
         r2d = LayeredRangeTree(coordinates)
-        print(r2d)
+        # print(r2d)
         rep = r2d.query_layered_range_tree(x1, x2, y1, y2)
         range_list = list(rep)
         brute = list(brute_algorithm(coordinates, x1, x2, y1, y2))
@@ -212,4 +215,3 @@ if __name__ == '__main__':
             print(coordinates)
             print(len(brute), len(range_list))
             raise ValueError()
-         
