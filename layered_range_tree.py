@@ -57,10 +57,10 @@ class LayeredRangeTree(RangeTree):
                 self.fractional_cascade(assoc, assoc_right, self.get_y, RIGHT)
 
                 # close modifications
-                assoc = list(map(lambda y: (y[0], tuple(y[1])), assoc))
+                assoc = list(map(lambda y: (y[COORD_INDEX], tuple(y[POINTER_INDEX])), assoc))
 
                 # store the max in the left subtree, the max is at loc mid - 1
-                v = Node2D(None, None, points[mid - 1][0], parent, assoc)
+                v = Node2D(None, None, points[mid - 1][COORD_INDEX], parent, assoc)
 
                 v.left = self.build_layered_range_tree_helper(points[:mid], assoc_left, parent=v)
                 v.right = self.build_layered_range_tree_helper(points[mid:], assoc_right, parent=v)
@@ -79,7 +79,7 @@ class LayeredRangeTree(RangeTree):
                 j += 1
             if j == len(assoc_child):
                 break
-            p_assoc[i][1][direction] = j
+            p_assoc[i][POINTER_INDEX][direction] = j
 
     @staticmethod
     def bin_search_low(A, getpoint, x: float):
@@ -108,7 +108,7 @@ class LayeredRangeTree(RangeTree):
             n = len(node.assoc) - i
             sub = []
             while h < n and self.get_y(node.assoc[h]) < y2:
-                sub.append(node.assoc[h][0])
+                sub.append(node.assoc[h][COORD_INDEX])
                 h += 1
             return sub
     
@@ -118,12 +118,12 @@ class LayeredRangeTree(RangeTree):
             return i
         n1 = node.assoc[i]
 
-        next_i = n1[1][direction]
+        next_i = n1[POINTER_INDEX][direction]
 
-        while n1[1][direction] == -1 and next_i != 0:
+        while n1[POINTER_INDEX][direction] == -1 and next_i != 0:
             i -= 1
             n1 = node.assoc[i]
-            next_i = node.assoc[i][1][direction]
+            next_i = node.assoc[i][POINTER_INDEX][direction]
         return next_i
 
     def get_y(self, item):
