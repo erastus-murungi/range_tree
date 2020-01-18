@@ -1,40 +1,10 @@
 from abc import *
-from operator import itemgetter
-
-
-by_x = itemgetter(0)
-by_y = itemgetter(1)
-
-
-def get_y(item):
-    return item[0][1]
-
-
-def get_x(item):
-    return item[0][0]
-
-
-def trickle_down(node, i, direction):
-    if node is None:
-        return i
-    n1 = node.assoc[i]
-
-    next_i = n1[1][direction]
-
-    while n1[1][direction] == -1 and next_i != 0:
-        i -= 1
-        n1 = node.assoc[i]
-        next_i = node.assoc[i][1][direction]
-    return next_i
 
 
 def brute_algorithm(coords, x1, x2, y1, y2):
     for x, y in coords:
         if x1 <= x < x2 and y1 <= y < y2:
             yield x, y
-
-
-LEFT, RIGHT = 0, 1
 
 
 class RangeTree(ABC):
@@ -59,10 +29,6 @@ class RangeTree(ABC):
             return get(node.point)
         else:
             return max(node.point, self.split_value(node.left, get), self.split_value(node.right, get))
-
-    def height(self, node):
-        return -1 if node is None else 0 if self.isleaf(node) else max(self.height(node.left),
-                                                                       self.height(node.right)) + 1
 
     def __str__(self):
         if self.root is None:
