@@ -16,10 +16,6 @@ class RangeTree(ABC):
     def isleaf(node):
         pass
 
-    def height(self, node) -> int:
-        return -1 if node is None else 0 if self.isleaf(node) else max(self.height(node.left),
-                                                                       self.height(node.right)) + 1
-
     def split_value(self, node, get) -> float:
         """This is just the maximum value in the left subtree"""
 
