@@ -5,6 +5,7 @@ from rangetree import RangeTree
 from dataclasses import dataclass
 from operator import itemgetter
 from range1d import Node, Leaf
+from copy import deepcopy
 
 
 @dataclass
@@ -19,6 +20,7 @@ class LeafDD(Leaf):
 
 class DDRangeTree(RangeTree):
     """Uses a Layered Range tree for the base case."""
+
     def __init__(self, points, depth=0):
         super().__init__()
         # self.max_depth is constant at every level since we are not modifying the list size
@@ -30,42 +32,46 @@ class DDRangeTree(RangeTree):
         return type(node) == Leaf or type(node) == LeafDD
 
     def build_dd_range_tree(self, points, axis):
-        points.sort(key=itemgetter(axis))  # sort by first element
+        points.sort(key=itemgetter(axis))
         return self.build_dd_range_tree_helper(points, axis)
 
     def build_dd_range_tree_helper(self, points, depth):
         if points:
+            points_copy = deepcopy(points)  # sorting modifies elements. Very important
             if self.max_depth - depth == 3:
-                tree = LayeredRangeTree(points, depth + 1)  # range 2D can be used here
+                tree = LayeredRangeTree(points_copy, depth + 1)  # range 2D can be used here
             else:
-                tree = DDRangeTree(points, depth + 1)
+                tree = DDRangeTree(points_copy, depth + 1)
             if len(points) == 1:
-                v = LeafDD(points[0], tree)
-                return v
+                return LeafDD(points[0], tree)
             else:
                 mid = (len(points)) >> 1
                 v = NodeDD(None, None,
-                           points[mid-1][depth], tree)
+                           points[mid - 1][depth], tree)
                 v.right = self.build_dd_range_tree_helper(points[mid:], depth)
                 v.left = self.build_dd_range_tree_helper(points[:mid], depth)
                 return v
         return None
 
-    def qualifies(self, node, queries):
-        assert self.isleaf(node)
+    @staticmethod
+    def qualifies(node, queries):
+        """Checks if a leaf node should be reported."""
+        # assert self.isleaf(node)
         for axis, (i, j) in enumerate(queries):
-            if not (i < node.point[axis] < j):
+            if not (i <= node.point[axis] < j):
                 return False
         return True
 
     def __filter(self, node, curr_depth, queries):
+        """Determines which type of method to call in the next level of recursion."""
         if self.max_depth - curr_depth == 3:
             return node.next_tree.query_layered_range_tree(*queries[curr_depth + 1], *queries[curr_depth + 2])
         else:
-            return node.next_tree.query_dd_range_tree(self, curr_depth + 1, queries)
+            return node.next_tree.query_dd_range_tree(queries, curr_depth + 1)
 
     def query_dd_range_tree(self, queries, axis=0):
-        """Takes as arguments a tuples of coordinates"""
+        """Takes as arguments a tuples of coordinates.
+        very similar to range1D query"""
         assert len(queries) == self.max_depth
         i, j = queries[axis]
 
@@ -111,7 +117,7 @@ class DDRangeTree(RangeTree):
 def brute(ps, qs):
     for p in ps:
         for k, (i, j) in enumerate(qs):
-            if not(i <= p[k] < j):
+            if not (i <= p[k] < j):
                 break
             if k + 1 == len(qs):
                 yield p
@@ -119,21 +125,42 @@ def brute(ps, qs):
 
 if __name__ == '__main__':
     from random import randint
-    from pprint import pprint
+    from datetime import datetime
+    from pympler import asizeof
 
-    lim = 20
-    d = 3
-    num_coords = 9
+    lim = 100
+    d = 5
+    num_coords = 1000
+    test_rounds = 1
+
 
     def randy():
         yield randint(0, lim)
-    q = [(5, 15), (2, 19), (3, 10)]
-    # coordinates = [tuple([next(randy()) for _ in range(d)]) for _ in range(num_coords)]
-    coordinates = [(12, 10, 10), (9, 7, 4), (7, 8, 3), (13, 10, 20), (1, 19, 10), (19, 5, 9), (12, 0, 10), (13, 16, 0), (3, 9, 16)]
 
-    print(coordinates)
-    rdd = DDRangeTree(coordinates)
 
-    print(list(brute(coordinates, q)))
-    rep = rdd.query_dd_range_tree(q)
-    pprint(list(rdd.report(rep)))
+    q = [(70, 100), (10, 100), (30, 80), (20, 80), (45, 76)]
+    for i in range(test_rounds):
+        coordinates = [tuple([next(randy()) for _ in range(d)]) for _ in range(num_coords)]
+        t1 = datetime.now()
+        rdd = DDRangeTree(coordinates)
+        print("This object uses:", asizeof.asizeof(rdd) / (2 ** 20), "MB and is constructed in:",
+              (datetime.now() - t1).total_seconds(), "seconds.")
+
+        t2 = datetime.now()
+        print("Brute algorithm query ran in:", (datetime.now() - t2).total_seconds(), "seconds")
+        nb = len(list(brute(coordinates, q)))
+
+        t3 = datetime.now()
+        rep = rdd.query_dd_range_tree(q)
+        nr = len(list(rdd.report(rep)))
+        print("d-D range query ran in:", (datetime.now() - t3).total_seconds(), "seconds")
+
+        print(nr, nb)
+        if nr != nb:
+            print(coordinates)
+            raise ValueError()
+
+        __output__ = """ This object uses: 274.5932922363281 MB and is constructed in: 26.46904 seconds.
+                        Brute algorithm query ran in: 1e-06 seconds
+                        d-D range query ran in: 0.000511 seconds
+                        19 19"""
