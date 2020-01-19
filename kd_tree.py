@@ -1,6 +1,8 @@
 from operator import sub, itemgetter
 from dataclasses import dataclass
 from typing import Union
+from sys import maxsize
+from itertools import chain
 
 
 __author__ = "Erastus Murungi"
@@ -12,23 +14,36 @@ class KDNode:
     data: tuple
     left: Union[None, "KDNode"]
     right: Union[None, "KDNode"]
+    # the node can be augmented with satellite information here
+    # a parent pointer can be added here to enable upward traversal
 
 
 class KDTree:
-    INF = float('inf')
+    INF = maxsize
 
     def __init__(self, points=()):
+        """The tree can be initialized with or without points"""
         self.k = len(points[0])
         self.root = self.build_kd_tree(points, 0)
+        # stores the total size of the tree
         self.size = len(points)
 
     def build_kd_tree(self, points, depth):
+        # Order O(n^2 lg n) build time
+        # Can be sped up using a linear time median_low finding algorithm
+        # Or maintaining a k sorted lists of points to enable quick median finding. The construction of time f such
+        # an algorithm is O(k nlg n), where k is the dimension
+
         if not points:
             return None
         axis = depth % self.k
 
         points.sort(key=itemgetter(axis))
         mid = len(points) >> 1
+
+        # to ensure all duplicate_points larger than the median go to the right
+        while mid > 0 and (points[mid][axis] == points[mid - 1][axis]):
+            mid -= 1
 
         return KDNode(points[mid], self.build_kd_tree(points[:mid], depth + 1),
                       self.build_kd_tree(points[mid + 1:], depth + 1))
@@ -51,6 +66,10 @@ class KDTree:
         res = __insert(point, self.root, 0)
         self.size += 1
         return res
+
+    @staticmethod
+    def isleaf(node):
+        return node.left is None and node.right is None
 
     def find(self, point):
         assert len(point) == self.k
@@ -75,6 +94,7 @@ class KDTree:
     def find_min(self, dim):
         """find the point with the smallest value in the dth dimension.
         This method assumes the data is not sorted"""
+        assert dim < self.k
         return self.__find_min(self.root, dim, 0)
 
     def __find_min(self, node, dim, axis):
@@ -92,7 +112,7 @@ class KDTree:
         else:
             return min(self.__find_min(node.left, dim, (axis + 1) % self.k),
                        self.__find_min(node.right, dim, (axis + 1) % self.k),
-                       node.data, key=lambda t: self.INF if t is None else t[dim])
+                       node.data, key=lambda t: maxsize if t is None else t[dim])
 
     def remove(self, point):
         assert len(point) == self.k
@@ -137,9 +157,40 @@ class KDTree:
             else:
                 return 1 + size_helper(node.left) + size_helper(node.right)
         return size_helper(self.root)
-    
+
     def range_search(self, queries):
         pass
+
+    def __str__(self):
+        if self.root is None:
+            return str(None)
+        else:
+            self.__print_helper(self.root, "", True)
+            return ''
+
+    def __print_helper(self, node, indent, last):
+        """Simple recursive tree printer"""
+        if node is None:
+            print(indent + "∅")
+        else:
+            if self.isleaf(node):
+                print(indent, end='')
+                if last:
+                    print("R----", end='')
+                else:
+                    print("L----", end='')
+                print(str(node.data))
+            else:
+                print(indent, end='')
+                if last:
+                    print("R----", end='')
+                    indent += "     "
+                else:
+                    print("L----", end='')
+                    indent += "|    "
+                print(str(node.data))
+                self.__print_helper(node.left, indent, False)
+                self.__print_helper(node.right, indent, True)
 
     def __len__(self):
         return self.size
@@ -149,6 +200,8 @@ class KDTree:
 
     @staticmethod
     def minkowski_distance(points1, points2, p=2):
+        if any([p is None or p >= maxsize for p in chain(points1, points2)]):
+            raise ValueError("Invalid points")
         return (sum([abs(sub(*z)) ** p for z in zip(points1, points2)])) ** (1 / p)
 
 
@@ -156,27 +209,33 @@ if __name__ == '__main__':
     from random import randint
     from pprint import PrettyPrinter
     pp = PrettyPrinter(indent=5)
+    from pympler import asizeof
 
+    d = 3
     lim = 100
-    num_coords = 10
+    num_coords = 100000
+    test_rounds = 2
 
 
     def randy():
         return randint(0, lim)
 
-    # coordinates = [(randy(), randy()) for _ in range(num_coords)]
-    coordinates = [(3, 40), (4, 83), (14, 14), (37, 51), (43, 48), (59, 86), (61, 82), (69, 93), (93, 9), (99, 34)]
-    print(sorted(coordinates))
-    kdtree = KDTree(coordinates)
-    kdtree.insert((1, 30))
-    for coord in coordinates:
-        print(coord in kdtree)
-    print((1, 30) in kdtree)
-    y = kdtree.find((1, 30))
-    print(y.data)
-    kdtree.remove((1, 30))
-    x = kdtree.find_min(dim=0)
-    print(x)
-    print(kdtree.recalc_size())
-    print(len(kdtree))
-    pp.pprint(repr(kdtree.root))
+    for _ in range(test_rounds):
+
+        coordinates = [tuple([randy() for _ in range(d)]) for _ in range(num_coords)]
+        # coordinates = [(10, 54, 32), (35, 29, 48), (35, 6, 89), (57, 10, 29), (69, 18, 73)]
+
+        # print(sorted(coordinates))
+        kdtree = KDTree(coordinates)
+        print("The object uses:", f"{asizeof.asizeof(kdtree) / (2 ** 20):.2f} MB for {num_coords}"
+                                  f" points of dimension {d}.")
+        # print(kdtree)
+
+        for coord in coordinates:
+            assert (coord in kdtree)
+        # print(y.data)
+        x = kdtree.find_min(dim=0)
+        print(x)
+        print(kdtree.recalc_size())
+        print(len(kdtree))
+        # pp.pprint(repr(kdtree.root))
