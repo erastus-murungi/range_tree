@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Union
 from sys import maxsize
 from itertools import chain
-
+from heapq import *
 
 __author__ = "Erastus Murungi"
 __email__ = "murungi@mit.edu"
@@ -88,7 +88,36 @@ class KDTree:
     def __contains__(self, item):
         return self.find(item) is not None
 
-    def nearest_neighbor(self):
+    def __get_closer_point(self, pivot, p1, p2):
+        if p1 is None:
+            return p2
+        if p2 is None:
+            return p1
+        return p1 if self.minkowski_distance(pivot, p1) < self.minkowski_distance(pivot, p2) else p2
+
+    def nearest_neighbor(self, point):
+        assert len(point) == self.k
+        return self.__nearest_neighbor(self.root, point)
+
+    def __nearest_neighbor(self, node, point, cd=0):
+        if node is None:
+            return None
+
+        axis = cd % self.k
+        prefer, alternate = (node.left, node.right) if point[axis] < node.data[axis] else (node.right, node.left)
+        best = self.__get_closer_point(point, node.data,
+                                       self.__nearest_neighbor(prefer, point, cd + 1))
+
+        # intersection check
+        # we check whether the candidate hypersphere based on
+        # our current guess could cross the splitting hyperplane of the current node
+        radius = abs(node.data[axis] - point[axis])
+        if self.minkowski_distance(point, best) > radius:
+            best = self.__get_closer_point(point, best,
+                                           self.__nearest_neighbor(alternate, point, cd + 1))
+        return best
+
+    def k_nearest_neighbors(self, point):
         pass
 
     def find_min(self, dim):
@@ -156,6 +185,7 @@ class KDTree:
                 return 0
             else:
                 return 1 + size_helper(node.left) + size_helper(node.right)
+
         return size_helper(self.root)
 
     def range_search(self, queries):
@@ -205,20 +235,33 @@ class KDTree:
         return (sum([abs(sub(*z)) ** p for z in zip(points1, points2)])) ** (1 / p)
 
 
+def brute_nearest_neighbor(coords, p, distance_function):
+    # naive nearest neighbor
+    best_dist, best_point = maxsize, None
+    for coord in coords:
+        dist = distance_function(coord, p)
+        if dist < best_dist:
+            best_dist, best_point = dist, coord
+    return best_point
+
+
 if __name__ == '__main__':
     from random import randint
     from pprint import PrettyPrinter
+    from datetime import datetime
+
     pp = PrettyPrinter(indent=5)
     from pympler import asizeof
 
-    d = 3
-    lim = 100
-    num_coords = 100000
+    d = 5
+    lim = 500
+    num_coords = 1000000
     test_rounds = 2
 
 
     def randy():
         return randint(0, lim)
+
 
     for _ in range(test_rounds):
 
@@ -228,14 +271,23 @@ if __name__ == '__main__':
         # print(sorted(coordinates))
         kdtree = KDTree(coordinates)
         print("The object uses:", f"{asizeof.asizeof(kdtree) / (2 ** 20):.2f} MB for {num_coords}"
-                                  f" points of dimension {d}.")
+                                  f" {d}-D points.")
         # print(kdtree)
+        p = (90, 78, 200, 409, 499)
+        t1 = datetime.now()
+        nn = kdtree.nearest_neighbor(p)
+        print(f"kd-tree NN query ran in {(datetime.now() - t1).total_seconds()}.")
+
+        t2 = datetime.now()
+        bnn = brute_nearest_neighbor(coordinates, p, KDTree.minkowski_distance)
+        print(f"brute NN query ran in {(datetime.now() - t2).total_seconds()}.")
+
+        assert bnn == nn
 
         for coord in coordinates:
             assert (coord in kdtree)
         # print(y.data)
-        x = kdtree.find_min(dim=0)
-        print(x)
-        print(kdtree.recalc_size())
-        print(len(kdtree))
+        # x = kdtree.find_min(dim=0)
+        # print(kdtree.recalc_size())
+        # print(len(kdtree))
         # pp.pprint(repr(kdtree.root))
