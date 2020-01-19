@@ -5,7 +5,6 @@ from rangetree import RangeTree
 from dataclasses import dataclass
 from operator import itemgetter
 from range1d import Node, Leaf
-from copy import deepcopy
 
 
 @dataclass
@@ -32,16 +31,15 @@ class DDRangeTree(RangeTree):
         return type(node) == Leaf or type(node) == LeafDD
 
     def build_dd_range_tree(self, points, axis):
-        points.sort(key=itemgetter(axis))
-        return self.build_dd_range_tree_helper(points, axis)
+        sorted_points = sorted(points, key=itemgetter(axis))
+        return self.build_dd_range_tree_helper(sorted_points, axis)
 
     def build_dd_range_tree_helper(self, points, depth):
         if points:
-            points_copy = deepcopy(points)  # sorting modifies elements. Very important
             if self.max_depth - depth == 3:
-                tree = LayeredRangeTree(points_copy, depth + 1)  # range 2D can be used here
+                tree = LayeredRangeTree(points, depth + 1)  # range 2D can be used here
             else:
-                tree = DDRangeTree(points_copy, depth + 1)
+                tree = DDRangeTree(points, depth + 1)
             if len(points) == 1:
                 return LeafDD(points[0], tree)
             else:
@@ -130,7 +128,7 @@ if __name__ == '__main__':
 
     lim = 100
     d = 5
-    num_coords = 1000
+    num_coords = 300
     test_rounds = 1
 
 
@@ -138,12 +136,12 @@ if __name__ == '__main__':
         yield randint(0, lim)
 
 
-    q = [(70, 100), (10, 100), (30, 80), (20, 80), (45, 76)]
+    q = [(30, 100), (10, 100), (30, 80), (20, 80), (45, 76)]
     for i in range(test_rounds):
         coordinates = [tuple([next(randy()) for _ in range(d)]) for _ in range(num_coords)]
         t1 = datetime.now()
         rdd = DDRangeTree(coordinates)
-        print("This object uses:", asizeof.asizeof(rdd) / (2 ** 20), "MB and is constructed in:",
+        print("This object uses:", f"{asizeof.asizeof(rdd) / (2 ** 20):.3f}", "MB and is constructed in:",
               (datetime.now() - t1).total_seconds(), "seconds.")
 
         t2 = datetime.now()
@@ -160,7 +158,8 @@ if __name__ == '__main__':
             print(coordinates)
             raise ValueError()
 
-        __output__ = """ This object uses: 274.5932922363281 MB and is constructed in: 26.46904 seconds.
+        __output__ = """ This object uses: 274.593 MB and is constructed in: 26.46904 seconds.
                         Brute algorithm query ran in: 1e-06 seconds
                         d-D range query ran in: 0.000511 seconds
                         19 19"""
+      
