@@ -4,9 +4,14 @@ from typing import Union
 from sys import maxsize
 from itertools import chain
 from heapq import *
+import numpy as np
+
 
 __author__ = "Erastus Murungi"
 __email__ = "murungi@mit.edu"
+
+LEFT, RIGHT = 0, 1
+LOW, HIGH = 0, 1
 
 
 @dataclass
@@ -14,17 +19,29 @@ class KDNode:
     data: tuple
     left: Union[None, "KDNode"]
     right: Union[None, "KDNode"]
+
     # the node can be augmented with satellite information here
     # a parent pointer can be added here to enable upward traversal
 
+    @property
+    def isleaf(self):
+        return self.left is None and self.right is None
+
+    def __iter__(self):
+        yield from self.data
+
 
 class KDTree:
-    INF = maxsize
-
     def __init__(self, points=()):
         """The tree can be initialized with or without points"""
         self.k = len(points[0])
+        self.INF = np.full(self.k, maxsize)
+        self.NEG_INF = np.full(self.k, -maxsize)
         self.root = self.build_kd_tree(points, 0)
+
+        # calculate the size of the region
+        self.mins = [self.find_min(axis)[axis] for axis in range(self.k)]  # O(k lg n)
+        self.maxs = [self.find_max(axis)[axis] for axis in range(self.k)]  # O(k lg n)
         # stores the total size of the tree
         self.size = len(points)
 
@@ -49,8 +66,8 @@ class KDTree:
                       self.build_kd_tree(points[mid + 1:], depth + 1))
 
     def insert(self, point):
+        """Inserts a single point into the KD-Tree. It does not allow duplicates"""
         assert len(point) == self.k
-        self.size += 1
 
         def __insert(data, node, cd):
             if node is None:
@@ -65,30 +82,51 @@ class KDTree:
 
         res = __insert(point, self.root, 0)
         self.size += 1
+        self.__insert_update_bounds(point)
         return res
 
-    @staticmethod
-    def isleaf(node):
-        return node.left is None and node.right is None
-
-    def find(self, point):
+    def access(self, point):
+        """Find the Node in the KDTree withe the given point and None if it doesn't exist."""
         assert len(point) == self.k
-        return self.__find(point, self.root, 0)
+        return self.__access(point, self.root, 0)
 
-    def __find(self, point, node, dim):
+    def __access(self, point, node, dim):
         if node is None:
             return None
         elif node.data == point:
             return node
         elif point[dim] < node.data[dim]:
-            return self.__find(point, node.left, (dim + 1) % self.k)
+            return self.__access(point, node.left, (dim + 1) % self.k)
         else:
-            return self.__find(point, node.right, (dim + 1) % self.k)
+            return self.__access(point, node.right, (dim + 1) % self.k)
 
     def __contains__(self, item):
-        return self.find(item) is not None
+        return self.access(item) is not None
+
+    def __insert_update_bounds(self, point):
+        for axis in range(self.k):
+            self.mins[axis] = min(self.mins[axis], point[axis])
+            self.maxs[axis] = max(self.maxs[axis], point[axis])
+
+    def minimum(self, dim):
+        # assert dim < self.k
+        return self.mins[dim]
+
+    def maximum(self, dim):
+        """This is faster than find_max"""
+        return self.maxs[dim]
+
+    def __delete_update_bounds(self, point):
+        """Update the mins and the maxes after deleting a point from the KD-Tree"""
+        for axis in point:
+            if point[axis] == self.maximum(axis):
+                self.maxs[axis] = self.find_max(axis)[axis]
+            else:
+                if point[axis] == self.minimum(axis):
+                    self.mins[axis] = self.find_min(axis)[axis]
 
     def __get_closer_point(self, pivot, p1, p2):
+        """Returns the point which is closer to the pivot"""
         if p1 is None:
             return p2
         if p2 is None:
@@ -96,6 +134,7 @@ class KDTree:
         return p1 if self.minkowski_distance(pivot, p1) < self.minkowski_distance(pivot, p2) else p2
 
     def nearest_neighbor(self, point):
+        """Find the single nearest neighbor to the point given or None if the tree is empty."""
         assert len(point) == self.k
         return self.__nearest_neighbor(self.root, point)
 
@@ -108,7 +147,6 @@ class KDTree:
         best = self.__get_closer_point(point, node.data,
                                        self.__nearest_neighbor(prefer, point, cd + 1))
 
-        # intersection check
         # we check whether the candidate hypersphere based on
         # our current guess could cross the splitting hyperplane of the current node
         radius = abs(node.data[axis] - point[axis])
@@ -118,6 +156,7 @@ class KDTree:
         return best
 
     def k_nearest_neighbors(self, point):
+        """Find K nearest neighbors of a node."""
         pass
 
     def find_min(self, dim):
@@ -128,7 +167,7 @@ class KDTree:
 
     def __find_min(self, node, dim, axis):
         if node is None:
-            return None
+            return self.INF
         # T splits on the dimension we’re searching
         # => only visit left subtree
         if dim == axis:
@@ -139,15 +178,36 @@ class KDTree:
         # T splits on a different dimension
         # => have to search both subtrees
         else:
-            return min(self.__find_min(node.left, dim, (axis + 1) % self.k),
-                       self.__find_min(node.right, dim, (axis + 1) % self.k),
-                       node.data, key=lambda t: maxsize if t is None else t[dim])
+            left_min = self.__find_min(node.left, dim, (axis + 1) % self.k)
+            right_min = self.__find_min(node.right, dim, (axis + 1) % self.k)
+            local = node.data
+            min_ = min(left_min, right_min, local, key=lambda p: p[dim])
+            return min_
+
+    def find_max(self, dim):
+        """Finds the maximum point in the tree."""
+        assert dim < self.k
+        return self.__find_max(self.root, dim, 0)
+
+    def __find_max(self, node, dim, axis):
+        if node is None:
+            return self.NEG_INF
+        if dim == axis:
+            if node.right is None:
+                return node.data
+            else:
+                return self.__find_max(node.right, dim, (axis + 1) % self.k)
+        else:
+            right_max = self.__find_max(node.right, dim, (axis + 1) % self.k)
+            left_max = self.__find_max(node.left, dim, (axis + 1) % self.k)
+            local = node.data
+            max_ = max(right_max, left_max, local, key=lambda p: p[dim])
+            return max_
 
     def remove(self, point):
         assert len(point) == self.k
-        something = self.__remove(point, self.root)
         self.size -= 1
-        return something
+        self.__delete_update_bounds(point)
 
     def __remove(self, point, node, cd=0):
         if node is None:
@@ -179,7 +239,42 @@ class KDTree:
             node.right = self.__remove(point, node.right, next_cd)
         return node
 
+    @staticmethod
+    def __get_regions(region, split_node, axis):
+        """Uses exactly one extra array on each level. We reuse the old array. The size of each array = k*2.
+        The number of copies are roughly n/2."""
+        region_right = np.copy(region)
+
+        # create alias
+        region_left = region
+        region_left[axis][HIGH] = min(region[axis][HIGH], split_node.data[axis])
+        region_right[axis][LOW] = region[axis][HIGH] + 1
+
+        return region_left, region_right
+
+    @staticmethod
+    def node_is_contained(node, query):
+        """Returns true if a node is in a certain region."""
+        for axis in range(len(query)):
+            if not (query[axis][LOW] <= node.data[axis] < query[axis][HIGH]):
+                return False
+        return True
+
+    @staticmethod
+    def __dim_is_contained(query, region, axis):
+        """Checks whether one dimension in the target region is contained inside the query dimension."""
+        return query[axis][LOW] <= region[axis][LOW] and query[axis][HIGH] > region[axis][HIGH]
+
+    def region_is_contained(self, query, region):
+        """Checks whether the target region fully contained inside the query hyper-rectangle"""
+        return all([self.__dim_is_contained(query, region, axis) for axis in range(len(query))])
+
+    def regions_intersect(self, query, region):
+        """Checks whether there exists any intersection between two regions"""
+        return any([not self.__dim_is_contained(query, region, axis) for axis in range(len(query))])
+
     def recalc_size(self):
+        """Manually recalculates the size of the KD Tree. It is used only to check that __len__ works as expected."""
         def size_helper(node):
             if node is None:
                 return 0
@@ -189,7 +284,32 @@ class KDTree:
         return size_helper(self.root)
 
     def range_search(self, queries):
-        pass
+        """Returns all the nodes in the given range. The perks of KD-Trees set in when the subtrees are augmented."""
+        if len(queries) != self.k:
+            raise ValueError("Invalid query dimensions.")
+        queries = np.array(queries)
+        region = np.array(list(zip(self.mins, self.maxs)))
+        result = []
+        self.__range_search(self.root, region, queries, 0, result)
+        return result
+
+    def __range_search(self, v, rv, query, axis, output):
+        if v is not None:
+            if self.node_is_contained(v, query):
+                output.append(v.data)
+            if not v.isleaf:
+                region_left, region_right = self.__get_regions(rv, v, axis)
+                if self.region_is_contained(query, region_left):
+                    output.append(v.left)
+                else:
+                    if self.regions_intersect(query, region_left):
+                        self.__range_search(v.left, region_left, query, (axis + 1) % self.k, output)
+
+                if self.region_is_contained(query, region_right):
+                    output.append(v.right)
+                else:
+                    if self.regions_intersect(query, region_right):
+                        self.__range_search(v.right, region_right, query, (axis + 1) % self.k, output)
 
     def __str__(self):
         if self.root is None:
@@ -203,7 +323,7 @@ class KDTree:
         if node is None:
             print(indent + "∅")
         else:
-            if self.isleaf(node):
+            if node.isleaf:
                 print(indent, end='')
                 if last:
                     print("R----", end='')
@@ -234,6 +354,24 @@ class KDTree:
             raise ValueError("Invalid points")
         return (sum([abs(sub(*z)) ** p for z in zip(points1, points2)])) ** (1 / p)
 
+    @staticmethod
+    def report(output: list):
+        """Generates the nodes in the subtrees in the order in which they were found."""
+
+        def __report_helper(n):
+            if n is not None:
+                if n.left is not None:
+                    yield from __report_helper(n.left)
+                yield n.data
+                if n.right is not None:
+                    yield from __report_helper(n.right)
+
+        for node in output:
+            if type(node) is tuple:
+                yield node
+            else:
+                yield from __report_helper(node)
+
 
 def brute_nearest_neighbor(coords, p, distance_function):
     # naive nearest neighbor
@@ -245,6 +383,15 @@ def brute_nearest_neighbor(coords, p, distance_function):
     return best_point
 
 
+def brute_range_search(points, query):
+    for point in points:
+        for axis in range(n := len(query)):
+            if not (query[axis][LOW] <= point[axis] < query[axis][HIGH]):
+                break
+            if axis + 1 == n:
+                yield point
+
+
 if __name__ == '__main__':
     from random import randint
     from pprint import PrettyPrinter
@@ -254,9 +401,9 @@ if __name__ == '__main__':
     from pympler import asizeof
 
     d = 5
-    lim = 500
-    num_coords = 1000000
-    test_rounds = 2
+    lim = 10000
+    num_coords = 100000
+    test_rounds = 1
 
 
     def randy():
@@ -264,30 +411,38 @@ if __name__ == '__main__':
 
 
     for _ in range(test_rounds):
-
         coordinates = [tuple([randy() for _ in range(d)]) for _ in range(num_coords)]
-        # coordinates = [(10, 54, 32), (35, 29, 48), (35, 6, 89), (57, 10, 29), (69, 18, 73)]
+        # coordinates = [(1, 60, 65), (9, 63, 25),
+        #                (14, 6, 64), (43, 38, 32), (44, 43, 87), (49, 39, 63), (66, 24, 14), (74, 35, 3), (76, 99, 22),
+        #                (77, 24, 10)]
 
         # print(sorted(coordinates))
+        qs = ((0, 5000), (0, 1000), (0, 5000), (1000, 2000), (700, 80000))
         kdtree = KDTree(coordinates)
+        output = kdtree.range_search(qs)
+        brute = list(brute_range_search(coordinates, qs))
+        print(len(brute))
+        print(len(list(kdtree.report(output))))
+        # print(kdtree)
+
         print("The object uses:", f"{asizeof.asizeof(kdtree) / (2 ** 20):.2f} MB for {num_coords}"
                                   f" {d}-D points.")
-        # print(kdtree)
-        p = (90, 78, 200, 409, 499)
-        t1 = datetime.now()
-        nn = kdtree.nearest_neighbor(p)
-        print(f"kd-tree NN query ran in {(datetime.now() - t1).total_seconds()}.")
-
-        t2 = datetime.now()
-        bnn = brute_nearest_neighbor(coordinates, p, KDTree.minkowski_distance)
-        print(f"brute NN query ran in {(datetime.now() - t2).total_seconds()}.")
-
-        assert bnn == nn
-
-        for coord in coordinates:
-            assert (coord in kdtree)
-        # print(y.data)
-        # x = kdtree.find_min(dim=0)
-        # print(kdtree.recalc_size())
-        # print(len(kdtree))
-        # pp.pprint(repr(kdtree.root))
+        # # print(kdtree)
+        # p = (90, 78, 200, 409, 499)
+        # t1 = datetime.now()
+        # nn = kdtree.nearest_neighbor(p)
+        # print(f"kd-tree NN query ran in {(datetime.now() - t1).total_seconds()}.")
+        #
+        # t2 = datetime.now()
+        # bnn = brute_nearest_neighbor(coordinates, p, KDTree.minkowski_distance)
+        # print(f"brute NN query ran in {(datetime.now() - t2).total_seconds()}.")
+        #
+        # assert bnn == nn
+        #
+        # for coord in coordinates:
+        #     assert (coord in kdtree)
+        # # print(y.data)
+        # # x = kdtree.find_min(dim=0)
+        # # print(kdtree.recalc_size())
+        # # print(len(kdtree))
+        # # pp.pprint(repr(kdtree.root))
