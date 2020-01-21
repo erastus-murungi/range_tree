@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from typing import Union
 from sys import maxsize
 from itertools import chain
-from heapq import *
+from bpq import BoundedPriorityQueue
 import numpy as np
-
+from bisect import insort
 
 __author__ = "Erastus Murungi"
 __email__ = "murungi@mit.edu"
@@ -58,7 +58,7 @@ class KDTree:
         points.sort(key=itemgetter(axis))
         mid = len(points) >> 1
 
-        # to ensure all duplicate_points larger than the median go to the right
+        # to ensure all duplicate_points equal to the median go to the right
         while mid > 0 and (points[mid][axis] == points[mid - 1][axis]):
             mid -= 1
 
@@ -155,9 +155,25 @@ class KDTree:
                                            self.__nearest_neighbor(alternate, point, cd + 1))
         return best
 
-    def k_nearest_neighbors(self, point):
+    def k_nearest_neighbors(self, point, k):
         """Find K nearest neighbors of a node."""
-        pass
+        queue = BoundedPriorityQueue(k)
+        self.__k_nearest_neighbors(self.root, queue, point, 0)
+        return queue.iteritems()
+
+    def __k_nearest_neighbors(self, node, queue, point, axis):
+        if node is None:
+            return None
+
+        dist = self.minkowski_distance(point, node.data)
+        queue[dist] = node.data
+
+        prefer, alternate = (node.left, node.right) if point[axis] < node.data[axis] else (node.right, node.left)
+        self.__k_nearest_neighbors(prefer, queue, point, axis)
+
+        radius = abs(sub(node.data[axis], point[axis]))
+        if not queue.isfull or radius < queue.maxkey:
+            self.__k_nearest_neighbors(alternate, queue, point, axis)
 
     def find_min(self, dim):
         """find the point with the smallest value in the dth dimension.
@@ -275,6 +291,7 @@ class KDTree:
 
     def recalc_size(self):
         """Manually recalculates the size of the KD Tree. It is used only to check that __len__ works as expected."""
+
         def size_helper(node):
             if node is None:
                 return 0
@@ -349,7 +366,7 @@ class KDTree:
         return repr(self.root)
 
     @staticmethod
-    def minkowski_distance(points1, points2, p=2):
+    def minkowski_distance(points1, points2, p=3):
         if any([p is None or p >= maxsize for p in chain(points1, points2)]):
             raise ValueError("Invalid points")
         return (sum([abs(sub(*z)) ** p for z in zip(points1, points2)])) ** (1 / p)
@@ -392,6 +409,18 @@ def brute_range_search(points, query):
                 yield point
 
 
+def brute_k_nearest_neighbors(coords, p, k, distance_function):
+    """Simple kNN for benchmarking"""
+    bpq = []
+    for coord in coords:
+        dist = distance_function(coord, p)
+        if len(bpq) < k or dist < bpq[-1][0]:
+            insort(bpq, (dist, coord))
+            if len(bpq) > k:
+                bpq.pop()
+    return bpq
+
+
 if __name__ == '__main__':
     from random import randint
     from pprint import PrettyPrinter
@@ -402,8 +431,8 @@ if __name__ == '__main__':
 
     d = 5
     lim = 10000
-    num_coords = 100000
-    test_rounds = 1
+    num_coords = 20000
+    test_rounds = 10
 
 
     def randy():
@@ -421,28 +450,24 @@ if __name__ == '__main__':
         kdtree = KDTree(coordinates)
         output = kdtree.range_search(qs)
         brute = list(brute_range_search(coordinates, qs))
-        print(len(brute))
-        print(len(list(kdtree.report(output))))
+        # print(len(brute))
+        # print(len(list(kdtree.report(output))))
         # print(kdtree)
 
         print("The object uses:", f"{asizeof.asizeof(kdtree) / (2 ** 20):.2f} MB for {num_coords}"
                                   f" {d}-D points.")
-        # # print(kdtree)
-        # p = (90, 78, 200, 409, 499)
-        # t1 = datetime.now()
-        # nn = kdtree.nearest_neighbor(p)
-        # print(f"kd-tree NN query ran in {(datetime.now() - t1).total_seconds()}.")
-        #
-        # t2 = datetime.now()
-        # bnn = brute_nearest_neighbor(coordinates, p, KDTree.minkowski_distance)
-        # print(f"brute NN query ran in {(datetime.now() - t2).total_seconds()}.")
-        #
-        # assert bnn == nn
-        #
-        # for coord in coordinates:
-        #     assert (coord in kdtree)
-        # # print(y.data)
-        # # x = kdtree.find_min(dim=0)
-        # # print(kdtree.recalc_size())
-        # # print(len(kdtree))
-        # # pp.pprint(repr(kdtree.root))
+
+        # print(kdtree)
+        p = (90, 78, 200, 409, 499)
+        k = 5
+        t1 = datetime.now()
+        nn = kdtree.k_nearest_neighbors(p, k)
+        print(f"kd-tree kNN query for k = {k} ran in {(datetime.now() - t1).total_seconds()}.")
+
+        t2 = datetime.now()
+        bnn = brute_k_nearest_neighbors(coordinates, p, k, KDTree.minkowski_distance)
+        print(f"brute kNN query for k = {k} ran in {(datetime.now() - t2).total_seconds()}.")
+
+        nn = list(nn)
+        print(nn)
+        print(bnn)
