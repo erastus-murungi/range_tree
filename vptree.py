@@ -1,7 +1,7 @@
 import numpy as np
 from random import sample
 from scipy.spatial.distance import minkowski
-from bpq import BQPList
+from bpq import BPQArray
 from heapq import heappush, heappop
 
 
@@ -45,32 +45,32 @@ class VPTree:
 
     @staticmethod
     def select_vantage_point(points, distance_function):
-        if len(points) <= 10:
-            return points.pop(np.random.randint(0, len(points)))
-        else:
-            # traditional vantage point selection method
-            # picks the point with the largest spread
-            num_samples = num_tests = max(10, len(points) // 1000)
-            sampled_points = sample(points, num_samples)
-
-            best_spread = 0
-            best_point = None
-            for point in sampled_points:
-                rand_points = sample(points, num_tests)
-                distances = [distance_function(point, rand_point) for rand_point in rand_points]
-                mu = np.median(distances)
-
-                # can also use np.var. I think
-                spread = np.std(distances - mu)
-                if spread > best_spread:
-                    best_spread = spread
-                    best_point = point
-
-            points.remove(best_point)
-            return best_point
+        # if len(points) <= 10:
+        return points.pop(np.random.randint(0, len(points)))
+        # else:
+        #     # traditional vantage point selection method
+        #     # picks the point with the largest spread
+        #     num_samples = num_tests = max(10, len(points) // 1000)
+        #     sampled_points = sample(points, num_samples)
+        #
+        #     best_spread = 0
+        #     best_point = None
+        #     for point in sampled_points:
+        #         rand_points = sample(points, num_tests)
+        #         distances = [distance_function(point, rand_point) for rand_point in rand_points]
+        #         mu = np.median(distances)
+        #
+        #         # can also use np.var. I think
+        #         spread = np.std(distances - mu)
+        #         if spread > best_spread:
+        #             best_spread = spread
+        #             best_point = point
+        #
+        #     points.remove(best_point)
+        #     return best_point
 
     def k_nearest_neighbors(self, query, k=1, distance=minkowski):
-        queue = BQPList(k, query)
+        queue = BPQArray(k, query)
         tau = np.inf
         tovisit = []
         self.addpoint(tovisit, self, query)
