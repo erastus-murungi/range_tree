@@ -280,7 +280,7 @@ class KDTree:
     @staticmethod
     def __dim_is_contained(query, region, axis):
         """Checks whether one dimension in the target region is contained inside the query dimension."""
-        return query[axis][LOW] <= region[axis][LOW] and query[axis][HIGH] > region[axis][HIGH]
+        return query[axis][LOW] <= region[axis][LOW] and query[axis][HIGH] >= region[axis][HIGH]
 
     def region_is_contained(self, query, region):
         """Checks whether the target region fully contained inside the query hyper-rectangle"""
