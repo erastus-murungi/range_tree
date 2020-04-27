@@ -43,11 +43,12 @@ let iterative_build_segment_tree = function (arr, func) {
 
 let iterative_query_segment_tree = function (seg, l, r, func, identity) {
         /**
-         * @param {Number} left -
-         * @param {Number} right -
+         * @param {Number} left - left endpoint of the query
+         * @param {Number} right - right endpoint of the query
          * Uses a half-open interval
          */
-                // length of the SegTree array = 2n - 1
+
+        // length of the SegTree array = 2n - 1 ; n = ((2n - 1) + 1) / 2
         let n = (seg.length + 1) >> 1;
         if (r > n || l < 0) {
                 throw new Error("Out of range indices\n");
@@ -85,9 +86,9 @@ let recursive_query_segment_tree = (seg, l, r, func, identity, n) =>
                                 return seg[pos];
 
                         let t_mid = mid(t_left, t_right);
-                        let R_left = query(seg, left(pos), t_left, t_mid, l, r, func, identity);
-                        let R_right = query(seg, right(pos), t_mid + 1, t_right, l, r, func, identity);
-                        return func(R_left, R_right);
+                        let r_left = query(seg, left(pos), t_left, t_mid, l, r, func, identity);
+                        let r_right = query(seg, right(pos), t_mid + 1, t_right, l, r, func, identity);
+                        return func(r_left, r_right);
                 }
         )(seg, 0, 0, n - 1, l, r, func, identity);
 
@@ -96,8 +97,8 @@ let recursive_update_segment_tree = (seg, pos, new_value, func, n) =>
         (function update(seg, pos, new_value, func, idx, t_left,
                          t_right) {
                 /**
-                 * @param {number} pos - index in the array to perform the update
-                 * @param {number} n - length of the original array
+                 * @param {Number} pos - index in the array to perform the update
+                 * @param {Number} n - length of the original array
                  * works by simulating insertion
                  */
 
@@ -117,7 +118,7 @@ let recursive_update_segment_tree = (seg, pos, new_value, func, n) =>
 
 let iterative_update_interval = (seg, l, r, func, delta, n) => {
         /**
-         * add a
+         * update all the nodes in an interval
          */
         for (l += (n - 1), r += (n - 1); l < r; l >>= 1, r >>= 1) {
                 if (isEven(l)) seg[l] = func(delta, seg[l++]);
@@ -200,9 +201,9 @@ let recursive_query_segment_tree_lazy = (seg, lazy, l, r, func, identity, n) =>
                         return seg[cur];
 
                 let t_mid = mid(t_left, t_right);
-                let R_left = query_lazy(seg, left(cur), t_left, t_mid, l, r, func, identity);
-                let R_right = query_lazy(seg, right(cur), t_mid + 1, t_right, l, r, func, identity);
-                return func(R_left, R_right);
+                let r_left = query_lazy(seg, left(cur), t_left, t_mid, l, r, func, identity);
+                let r_right = query_lazy(seg, right(cur), t_mid + 1, t_right, l, r, func, identity);
+                return func(r_left, r_right);
         })(seg, 0, lazy, 0, n - 1, l, r, func, identity);
 
 let seg_node = function (val, lc, rc) {
@@ -266,9 +267,9 @@ let query_persistent = (roots, time, l, r, func, identity, n) => {
                 if (l <= t_left && t_right <= r)
                         return cur_node.val;
                 let t_mid = mid(t_left, t_right);
-                let R_left = query(cur_node.lc, t_left, t_mid, l, r, func, identity);
-                let R_right = query(cur_node.rc, t_mid + 1, t_right, l, r, func, identity);
-                return func(R_left, R_right);
+                let r_left = query(cur_node.lc, t_left, t_mid, l, r, func, identity);
+                let r_right = query(cur_node.rc, t_mid + 1, t_right, l, r, func, identity);
+                return func(r_left, r_right);
         })(roots[time], 0, n - 1, l, r, func, identity);
 };
 
