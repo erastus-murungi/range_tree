@@ -1,9 +1,11 @@
 from bisect import insort
+
 from scipy.spatial.distance import minkowski
 
 
-class BQPList:
+class BPQList:
     """Fast list-based bounded priority queue."""
+
     def __init__(self, k, base, distance_function=minkowski):
         self.bpq = []
         self.k = k
@@ -25,11 +27,11 @@ class BQPList:
     def shrink(self, new_k):
         if new_k > self.k:
             raise ValueError("New bound should be less")
-        self.bpq = self.bpq[: new_k]
+        self.bpq = self.bpq[:new_k]
 
     def __setattr__(self, name, value):
-        if name == 'self._base':
-            raise ValueError('{} is frozen'.format(name))
+        if name == "self._base":
+            raise ValueError("{} is frozen".format(name))
         else:
             object.__setattr__(self, name, value)
 
@@ -47,11 +49,12 @@ class BQPList:
         return len(self.bpq)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from random import randint
+
     coords = [(randint(0, 1000), randint(0, 1000)) for _ in range(10)]
     reference_point = (100, 100)
-    bpq = BQPList(3, reference_point)
+    bpq = BPQList(3, reference_point)
     for coord in coords:
         print(bpq.isfull)
         bpq.push(coord)

@@ -1,10 +1,11 @@
 # d-D range tree implementation
-from layered_range_tree import LayeredRangeTree
-from typing import Union
-from rangetree import RangeTree
 from dataclasses import dataclass
 from operator import itemgetter
-from range1d import Node, Leaf
+from typing import Union
+
+from layered_range_tree import LayeredRangeTree
+from range1d import Leaf, Node
+from rangetree import RangeTree
 
 
 @dataclass
@@ -27,7 +28,7 @@ class DDRangeTree(RangeTree):
         self.root = self.build_dd_range_tree(points, depth)
 
     @staticmethod
-    def isleaf(node):
+    def is_leaf(node):
         return type(node) == Leaf or type(node) == LeafDD
 
     def build_dd_range_tree(self, points, axis):
@@ -44,8 +45,7 @@ class DDRangeTree(RangeTree):
                 return LeafDD(points[0], tree)
             else:
                 mid = (len(points)) >> 1
-                v = NodeDD(None, None,
-                           points[mid - 1][depth], tree)
+                v = NodeDD(None, None, points[mid - 1][depth], tree)
                 v.right = self.build_dd_range_tree_helper(points[mid:], depth)
                 v.left = self.build_dd_range_tree_helper(points[:mid], depth)
                 return v
@@ -63,7 +63,9 @@ class DDRangeTree(RangeTree):
     def __filter(self, node, curr_depth, queries):
         """Determines which type of method to call in the next level of recursion."""
         if self.max_depth - curr_depth == 3:
-            return node.next_tree.query_layered_range_tree(*queries[curr_depth + 1], *queries[curr_depth + 2])
+            return node.next_tree.query_layered_range_tree(
+                *queries[curr_depth + 1], *queries[curr_depth + 2]
+            )
         else:
             return node.next_tree.query_dd_range_tree(queries, curr_depth + 1)
 
@@ -78,13 +80,13 @@ class DDRangeTree(RangeTree):
 
         output = []
         v_split = self.find_split_node(i, j)
-        if self.isleaf(v_split):
+        if self.is_leaf(v_split):
             # check if the point in v_split
             if self.qualifies(v_split, queries):
                 output.append(v_split)
         else:
             v = v_split.left
-            while not self.isleaf(v):
+            while not self.is_leaf(v):
                 if v.point >= i:
                     # report right subtree
                     subset = self.__filter(v.right, axis, queries)
@@ -97,7 +99,7 @@ class DDRangeTree(RangeTree):
                 output.append(v)
             # now we follow right side
             v = v_split.right
-            while v is not None and not self.isleaf(v):
+            while v is not None and not self.is_leaf(v):
                 if v.point < j:
                     # report left subtree
                     subset = self.__filter(v.left, axis, queries)
@@ -121,9 +123,10 @@ def brute(ps, qs):
                 yield p
 
 
-if __name__ == '__main__':
-    from random import randint
+if __name__ == "__main__":
     from datetime import datetime
+    from random import randint
+
     from pympler import asizeof
 
     lim = 100
@@ -131,27 +134,38 @@ if __name__ == '__main__':
     num_coords = 300
     test_rounds = 1
 
-
     def randy():
         yield randint(0, lim)
 
-
     q = [(30, 100), (10, 100), (30, 80), (20, 80), (45, 76)]
     for i in range(test_rounds):
-        coordinates = [tuple([next(randy()) for _ in range(d)]) for _ in range(num_coords)]
+        coordinates = [
+            tuple([next(randy()) for _ in range(d)]) for _ in range(num_coords)
+        ]
         t1 = datetime.now()
         rdd = DDRangeTree(coordinates)
-        print("This object uses:", f"{asizeof.asizeof(rdd) / (2 ** 20):.3f}", "MB and is constructed in:",
-              (datetime.now() - t1).total_seconds(), "seconds.")
+        print(
+            "This object uses:",
+            f"{asizeof.asizeof(rdd) / (2 ** 20):.3f}",
+            "MB and is constructed in:",
+            (datetime.now() - t1).total_seconds(),
+            "seconds.",
+        )
 
         t2 = datetime.now()
-        print("Brute algorithm query ran in:", (datetime.now() - t2).total_seconds(), "seconds")
+        print(
+            "Brute algorithm query ran in:",
+            (datetime.now() - t2).total_seconds(),
+            "seconds",
+        )
         nb = len(list(brute(coordinates, q)))
 
         t3 = datetime.now()
         rep = rdd.query_dd_range_tree(q)
         nr = len(list(rdd.report(rep)))
-        print("d-D range query ran in:", (datetime.now() - t3).total_seconds(), "seconds")
+        print(
+            "d-D range query ran in:", (datetime.now() - t3).total_seconds(), "seconds"
+        )
 
         print(nr, nb)
         if nr != nb:
@@ -162,4 +176,3 @@ if __name__ == '__main__':
                         Brute algorithm query ran in: 1e-06 seconds
                         d-D range query ran in: 0.000511 seconds
                         19 19"""
-      

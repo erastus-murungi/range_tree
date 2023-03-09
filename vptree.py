@@ -1,8 +1,9 @@
+from heapq import heappop, heappush
+
 import numpy as np
-from random import sample
 from scipy.spatial.distance import minkowski
-from bpq import BPQArray
-from heapq import heappush, heappop
+
+from bpq import BPQList
 
 
 class VPTree:
@@ -70,7 +71,7 @@ class VPTree:
         #     return best_point
 
     def k_nearest_neighbors(self, query, k=1, distance=minkowski):
-        queue = BPQArray(k, query)
+        queue = BPQList(k, query)
         tau = np.inf
         tovisit = []
         self.addpoint(tovisit, self, query)
@@ -88,7 +89,7 @@ class VPTree:
                 queue.push(node.vantage_point, dist)
             if queue.isfull:
                 tau, _ = queue.peek()
-            if node.isleaf:
+            if node.is_leaf:
                 seen += len(node.children)
                 for child in node.children:
                     d = distance(child, query)
@@ -136,9 +137,12 @@ class VPTree:
         return f"({self.vantage_point}, {self.left.vantage_point}, {self.right.vantage_point})"
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     num_points = 9980
-    coords = [(np.random.randint(0, 100000), np.random.randint(0, 100000)) for _ in range(num_points)]
+    coords = [
+        (np.random.randint(0, 100000), np.random.randint(0, 100000))
+        for _ in range(num_points)
+    ]
     vp = VPTree(coords, minkowski)
     q_point = (500, 1000)
     print(vp.size())

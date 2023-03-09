@@ -3,8 +3,9 @@ from rbt import RedBlackTree
 
 class BoundedPriorityQueue:
     """Simple bounded priority queue which uses a Red Black Tree as the underlying data structure."""
+
     def __init__(self, k):
-        self.maxkey = -float('inf')
+        self.maxkey = -float("inf")
         if k < 0:
             raise ValueError("k should be larger than 0")
         self.k = k
@@ -37,7 +38,7 @@ class BoundedPriorityQueue:
         return str(list(self._bpq.iteritems()))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from random import randint
 
     values = [(randint(0, 100), randint(1000, 10000)) for _ in range(10)]

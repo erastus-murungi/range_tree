@@ -1,3 +1,5 @@
+import operator as op
+
 import numpy as np
 
 
@@ -7,8 +9,12 @@ def lsb(x):
 
 class FenwickTree:
     """I-D Fenwick tree."""
-    def __init__(self, arr):
+
+    __slots__ = ("array", "aggregator")
+
+    def __init__(self, arr, aggregator=op.add):
         self.array = np.insert(arr, 0, 0)
+        self.aggregator = aggregator
         self.construct()
 
     def construct(self):
@@ -18,22 +24,21 @@ class FenwickTree:
         for i in range(1, n):
             j = i + lsb(i)
             if j < n:
-                self.array[j] += self.array[i]
+                self.array[j] = self.aggregator(self.array[i], self.array[j])
 
     def update(self, i, new_val):
-        # ass
         diff = self.array[i] - new_val
         self.array[i] = new_val
         j = i + lsb(i)
         while j < len(self.array):
-            self.array[j] += diff
+            self.array[j] = self.aggregator(self.array[j], diff)
             j = i + lsb(i)
 
     def point_query(self, i):
         i += 1  # because of 1-based indexing
         total = 0
         while i:
-            total += self.array[i]
+            total = self.aggregator(total, self.array[i])
             i &= ~lsb(i)  # i -= lsb(i)
         return total
 
@@ -44,18 +49,21 @@ class FenwickTree:
         return self.point_query(end) - self.point_query(start - 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from random import randint
     from time import perf_counter
-    nums = np.random.choice(100_000_000, 10_000_000)
-    t1 = perf_counter()
-    f_tree = FenwickTree(nums)
-    print(f"Fenwick tree constructed in {perf_counter() - t1} seconds.")
-    t2 = perf_counter()
-    y = f_tree.point_query(3_000_000)
-    print(f"Fenwick tree queried in {perf_counter() - t2} seconds.")
-    t3 = perf_counter()
-    z = np.sum(nums[:3_000_001])
-    print(f"Numpy sum done in {perf_counter() - t3} seconds.")
+
+    nums = np.random.choice(100_000_000, 1_000_000)
+    start = perf_counter()
+    f_tree = FenwickTree(nums, max)
+    print(f"Fenwick tree constructed in {perf_counter() - start} seconds.")
+
+    start = perf_counter()
+    y = f_tree.point_query(900_000)
+    print(f"Fenwick tree queried in {perf_counter() - start} seconds.")
+
+    start = perf_counter()
+    z = np.max(nums[:900_001])
+    print(f"Numpy sum done in {perf_counter() - start} seconds.")
 
     print(y, z)
