@@ -1,91 +1,103 @@
-from abc import ABC
-from functools import cache
+from abc import ABC, abstractmethod
 from sys import maxsize
-from typing import Union, NamedTuple, Iterator
+from typing import Iterator, NamedTuple, Protocol
 
 import numpy as np
 
 
-class Leaf(NamedTuple):
-    point: np.ndarray
+class Interval(NamedTuple):
+    start: float
+    end: float
 
-    def __hash__(self):
-        return id(self)
-
-
-OUT_OF_BOUNDS: Leaf = Leaf(np.array([-maxsize]))
+    def __contains__(self, item: float):
+        return self.start <= item < self.end
 
 
-class Split:
-    __slots__ = ("split_value", "left", "right")
-
-    def __init__(
-        self,
-        split_value: float,
-        left: Union["Split", Leaf],
-        right: Union["Split", Leaf],
-    ):
-        self.split_value = split_value
-        self.left = left
-        self.right = right
-
-    def is_leaf(self):
-        return self.left is None and self.right is None
-
-    def __repr__(self):
-        return f"{type(self).__name__}({self.split_value})"
-
-
-Node = Split | Leaf
+class SupportsAxisQuery(Protocol):
+    def query_axis(self, interval: Interval):
+        pass
 
 
 class RangeTree(ABC):
-    def __init__(self, root: Node):
-        self.root: Node = root
+    @abstractmethod
+    def find_split_value(self) -> float:
+        pass
 
-    @cache
-    def split_value(self, node: Node, axis: int) -> float:
-        """This is just the maximum value in the left subtree"""
-        if isinstance(node, Leaf):
-            if node is OUT_OF_BOUNDS:
-                return node.point[0]
-            return node.point[axis]
-        else:
-            return max(
-                node.split_value,
-                self.split_value(node.left, axis),
-                self.split_value(node.right, axis),
-            )
+    @abstractmethod
+    def report_leaves(self):
+        pass
 
-    def report_leaves(self, n: Node):
-        if isinstance(n, Leaf):
-            if n is not OUT_OF_BOUNDS:
-                yield n.point
-        else:
-            yield from self.report_leaves(n.left)
-            yield from self.report_leaves(n.right)
+    @staticmethod
+    @abstractmethod
+    def construct(self, axis):
+        pass
 
-    def find_split_node(self, x, y):
+    @abstractmethod
+    def yield_line(self, indent: str, prefix: str) -> Iterator[str]:
+        ...
+
+    @abstractmethod
+    def query(self, item, axis: int = 0):
+        ...
+
+    @property
+    def assoc(self):
+        return self
+
+    @staticmethod
+    def find_split_node(root, interval: Interval):
         """Finds and returns the split node
         For the range query [x : x'], the node v in a balanced binary search
         tree is a split node if its value x.v satisfies x.v ≥ x and x.v < x'.
         """
 
-        v = self.root
-        while not isinstance(v, Leaf) and (v.split_value >= y or v.split_value < x):
-            v = v.left if y <= v.split_value else v.right
+        v = root
+        while not isinstance(v, Leaf) and (
+            v.split_value >= interval.end or v.split_value < interval.start
+        ):
+            v = v.left if interval.end <= v.split_value else v.right
         return v
 
-    def pretty_print_tree(self):
-        def print_nodes(node: Node, indent: str, prefix: str) -> Iterator[str]:
-            """Prints the nodes of the tree line by line"""
-            yield f"{indent}{prefix}----{node}\n"
-            if isinstance(node, Split):
-                indent += "     " if prefix == "R" else "|    "
-                yield from print_nodes(node.left, indent, "L")
-                yield from print_nodes(node.right, indent, "R")
+    def pretty_str(self):
+        return "".join(self.yield_line("", "R"))
 
-        return "".join(print_nodes(self.root, "", "R"))
 
-    def __repr__(self) -> str:
-        return repr(self.root)
+class Leaf(RangeTree):
+    __slots__ = ("point", "axis")
+
+    def __init__(self, point, axis: int):
+        self.point = point
+        self.axis = axis
+
+    construct = __init__
+
+    def query_axis(self, interval: Interval):
+        if self is not OUT_OF_BOUNDS and self.split_value in interval:
+            yield self.point
+
+    def query(self, bound, axis: int = 0):
+        if self is not OUT_OF_BOUNDS and self.point[axis:] in bound:
+            yield self.point
+
+    @property
+    def split_value(self):
+        return self.point[self.axis]
+
+    def find_split_value(self) -> float:
+        return self.split_value
+
+    def report_leaves(self):
+        if self is not OUT_OF_BOUNDS:
+            yield self.point
+
+    def yield_line(self, indent: str, prefix: str) -> Iterator[str]:
+        yield f"{indent}{prefix}----{self}\n"
+
+    def __hash__(self):
+        return id(self)
+
+    def __repr__(self):
+        return f"Leaf({self.point})"
+
+
+OUT_OF_BOUNDS: Leaf = Leaf(np.array([-maxsize]), 0)

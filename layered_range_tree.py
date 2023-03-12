@@ -1,238 +1,210 @@
-from dataclasses import dataclass
+from bisect import bisect_left
+from itertools import takewhile
 from operator import itemgetter
+from typing import Optional, Iterator
 
-from range1d import Leaf, Node
-from rangetree import *
+import numpy as np
 
-LEFT, RIGHT = 0, 1
-COORD_INDEX, POINTER_INDEX = 0, 1
+from range2d import RangeTree2D, Rectangle
+from rangetree import Leaf, RangeTree, Interval, OUT_OF_BOUNDS
 
-
-@dataclass
-class Split2D(Split):
-    assoc: list
+LEFT, RIGHT = 1, 2
 
 
-@dataclass
-class Leaf2D(Leaf):
-    assoc: list
+def find_ge(array, x, key) -> Optional[int]:
+    """Find leftmost item greater than or equal to x"""
+    idx = bisect_left(array, x, key=key)
+    if idx != len(array):
+        return idx
+    return -1
 
 
-class LayeredRangeTree(RangeTree):
+class LayeredRangeTree(RangeTree2D):
     """Layered Range Tree with fractional cascading."""
 
-    def __init__(self, values, depth=0):
-        super().__init__()
+    def __init__(
+        self,
+        split_value: float,
+        left: RangeTree,
+        right: RangeTree,
+        assoc: RangeTree | np.ndarray,
+        depth,
+    ):
+        super().__init__(split_value, left, right, assoc)
         self.depth = depth
-        self.by_x = itemgetter(depth)
-        self.by_y = itemgetter(depth + 1)
-        self.root: Split2D = self.build_layered_range_tree(values)
 
     @staticmethod
-    def is_leaf(node):
-        return type(node) == Leaf or type(node) == Leaf2D
+    def construct(values: np.ndarray, axis: int = 0):
+        def construct_impl(assoc: np.ndarray, axis: int):
+            """Recursively build's a 1D range tree with fractional cascading.
+            This version only searches for the pointer at the beginning during the binary search step.
+            Only the leaves store the full coordinates. Internal nodes only store splitting values"""
+            # sort by y_values
 
-    def build_layered_range_tree(self, values):
-        points = sorted(values, key=self.by_x)
-        assoc_root = list(map(lambda w: [w, [-1, -1]], sorted(points, key=self.by_y)))
-        return self.build_layered_range_tree_helper(points, assoc_root)
+            n = len(assoc)
 
-    def build_layered_range_tree_helper(self, points, assoc):
-        """Recursively build's a 1D range tree with fractional cascading.
-        This version only searches for the pointer at the beginning during the binary search step.
-        Only the leaves store the full coordinates. Internal nodes only store splitting values"""
-        # sort by y_values
-
-        if points:
-            if len(points) == 1:
-                v = Leaf2D(points[0], assoc)
-                return v
+            if assoc.size == 0:
+                return OUT_OF_BOUNDS
+            elif n == 1:
+                return Leaf(assoc[0, :-2], axis)
             else:
-                mid = (len(points)) >> 1
+                split_x_value = assoc[n // 2, axis]
+                y_axis = axis + 1
 
-                # prep the cascaded points
-                assoc_left = list(
-                    map(lambda w: [w, [-1, -1]], sorted(points[:mid], key=self.by_y))
-                )
-                assoc_right = list(
-                    map(lambda w: [w, [-1, -1]], sorted(points[mid:], key=self.by_y))
-                )
+                assoc_sorted = np.array(sorted(assoc, key=itemgetter(y_axis)))
 
-                self.fractional_cascade(assoc, assoc_left, self.get_y, LEFT)
-                self.fractional_cascade(assoc, assoc_right, self.get_y, RIGHT)
-
-                # close modifications
-                assoc = list(
-                    map(lambda y: (y[COORD_INDEX], tuple(y[POINTER_INDEX])), assoc)
+                assoc_left, assoc_right = assoc[: n // 2, :], assoc[n // 2 :, :]
+                assoc_left_sorted = np.array(sorted(assoc_left, key=itemgetter(y_axis)))
+                assoc_right_sorted = np.array(
+                    sorted(assoc_right, key=itemgetter(y_axis))
                 )
 
-                # store the max in the left subtree, the max is at loc mid - 1
-                v = Split2D(None, None, points[mid - 1][self.depth], assoc)
+                assoc_sorted[:, y_axis + LEFT] = [
+                    find_ge(assoc_left_sorted, x, itemgetter(y_axis))
+                    for x in assoc_sorted[:, y_axis]
+                ]
+                assoc_sorted[:, y_axis + RIGHT] = [
+                    find_ge(assoc_right_sorted, x, itemgetter(y_axis))
+                    for x in assoc_sorted[:, y_axis]
+                ]
 
-                v.left = self.build_layered_range_tree_helper(points[:mid], assoc_left)
-                v.right = self.build_layered_range_tree_helper(
-                    points[mid:], assoc_right
+                return LayeredRangeTree(
+                    split_x_value,
+                    construct_impl(
+                        assoc_left,
+                        axis,
+                    ),
+                    construct_impl(
+                        assoc_right,
+                        axis,
+                    ),
+                    assoc_sorted,
+                    axis,
                 )
 
-                return v
-        return None
+        pointers = np.full((len(values), 2), -1)
+        sorted_by_x = np.array(sorted(values, key=itemgetter(axis)))
+        assoc = np.c_[sorted_by_x, pointers]
 
-    @staticmethod
-    def fractional_cascade(p_assoc, assoc_child, getpoint, direction):
-        """Set the pointers in the array stored at the parent. p_assoc is the y-sorted array which is
-        split to two assoc_child arrays"""
+        return construct_impl(assoc, axis)
 
-        j = 0
-        for i in range(len(p_assoc)):
-            if getpoint(p_assoc[i]) > getpoint(assoc_child[j]):
-                # try to get to the next larger value of assoc_child. if none exists break.
-                j += 1
-                while j < len(assoc_child) and getpoint(assoc_child[j]) == getpoint(
-                    assoc_child[j - 1]
-                ):
-                    j += 1
-            if j == len(assoc_child):
-                break
-            p_assoc[i][POINTER_INDEX][direction] = j
-
-    @staticmethod
-    def bin_search_low(A, getpoint, x: float):
-        """Searches for the smallest key >= x"""
-        if getpoint(A[-1]) < x:
-            return -1
-        high = len(A) - 1
-        low = 0
-        while low <= high:
-            mid = (high + low) >> 1
-            if getpoint(A[mid]) == x:
-                return mid
-            elif x > getpoint(A[mid]):
-                low = mid + 1
-            else:
-                high = mid - 1
-        return low
-
-    def filter_by_y(self, node, i, y2):
-        """Find the values which are less than y"""
-        if i == -1:
-            return []
+    def report_nodes(
+        self, v: RangeTree, box: Rectangle, frm: int
+    ) -> Iterator[np.array]:
+        # report left subtree
+        if isinstance(v, Leaf):
+            yield from v.query(box)
         else:
-            h = i
-            n = len(node.assoc)
-            sub = []
-            while h < n and self.get_y(node.assoc[h]) < y2:
-                sub.append(node.assoc[h][COORD_INDEX])
-                h += 1
-            return sub
+            yield from takewhile(
+                lambda element: element[self.depth + 1] < box.y_range.end,
+                v.assoc[frm:, :-2],
+            )
 
-    @staticmethod
-    def trickle_down(node, i, direction):
-        """The value of i can only increase."""
-        pointer = node.assoc[i][POINTER_INDEX]
-        return pointer[direction]
-
-    def get_y(self, item):
-        return item[COORD_INDEX][self.depth + 1]
-
-    def get_x(self, item):
-        return item[COORD_INDEX][self.depth]
-
-    def query_layered_range_tree(self, x1, x2, y1, y2):
-        if x1 > x2:
-            x1, x2 = x2, x1
-        if y1 > y2:
-            y1, y2 = y2, y1
-
-        output = []
-
-        v_split = self.find_split_node(x1, x2)
-        v_i = self.bin_search_low(v_split.assoc, self.get_y, y1)
-        if v_i == -1:
-            return []
-
-        i = v_i
-        if self.is_leaf(v_split):
+    def query(self, box: Rectangle):
+        v_split = RangeTree.find_split_node(self, box.x_range)
+        if isinstance(v_split, Leaf):
             # check if the point in v_split, leaves have no pointers
-            if (
-                x1 <= self.by_x(v_split.point) < x2
-                and y1 <= self.by_y(v_split.point) < y2
-            ):
-                output.append(v_split.point)
+            if v_split.point in box:
+                yield v_split.point
         else:
-            i = self.trickle_down(v_split, i, LEFT)
+            y_axis = self.depth + 1
+            idx = find_ge(
+                v_split.assoc,
+                box.y_range.start,
+                key=itemgetter(y_axis),
+            )
+            if idx == (-1):
+                return
+            # (∗ Follow the path to x and call 1D_RANGE_QUERY on the subtrees right of the path. ∗)
             v = v_split.left
-
-            while not self.is_leaf(v) and v is not None and i != -1:
-                if v.point >= x1:
+            idx_ge = v_split.assoc[idx, y_axis + LEFT]
+            while idx_ge != (-1) and not isinstance(v, Leaf):
+                if box.x_range.start <= v.split_value:
                     # report right subtree
-                    a = self.trickle_down(v, i, RIGHT)
-                    subset = self.filter_by_y(v.right, a, y2)
-                    output += subset
-
-                    i = self.trickle_down(v, i, LEFT)
+                    yield from self.report_nodes(
+                        v.right, box, v.assoc[idx_ge, y_axis + RIGHT]
+                    )
+                    idx_ge = v.assoc[idx_ge, y_axis + LEFT]
                     v = v.left
                 else:
-                    i = self.trickle_down(v, i, RIGHT)
+                    idx_ge = v.assoc[idx_ge, y_axis + RIGHT]
                     v = v.right
 
-            # v is now a leaf
-            if (
-                self.is_leaf(v)
-                and y1 <= self.by_y(v.point) < y2
-                and x1 <= self.by_x(v.point) < x2
-            ):
-                output.append(v.point)
+            if isinstance(v, Leaf) and v.point in box:
+                yield v.point
+
             # now we follow right side
-            i = self.trickle_down(v_split, v_i, RIGHT)
             v = v_split.right
-            while v is not None and not self.is_leaf(v) and i != -1:
-                if v.point < x2:
+            idx_ge = v_split.assoc[idx, y_axis + RIGHT]
+            while idx_ge != (-1) and not isinstance(v, Leaf):
+                if v.split_value < box.x_range.end:
                     # report left subtree
-                    a = self.trickle_down(v, i, LEFT)
-                    subset = self.filter_by_y(v.left, a, y2)
-                    output += subset
-
-                    i = self.trickle_down(v, i, RIGHT)
+                    yield from self.report_nodes(
+                        v.left, box, v.assoc[idx_ge, y_axis + LEFT]
+                    )
+                    idx_ge = v.assoc[idx_ge, y_axis + RIGHT]
                     v = v.right
-
                 else:
-                    i = self.trickle_down(v, i, LEFT)
+                    idx_ge = v.assoc[idx_ge, y_axis + LEFT]
                     v = v.left
 
             # check whether this point should be included too
-            if (
-                v is not None
-                and self.is_leaf(v)
-                and y1 <= self.by_y(v.point) < y2
-                and x1 <= self.by_x(v.point) < x2
-            ):
-                output.append(v.point)
-
-        return output
+            if isinstance(v, Leaf) and v.point in box:
+                yield v.point
 
 
 if __name__ == "__main__":
-    from random import randint
 
-    lim = 2000
+    def brute_algorithm(coords, x1, x2, y1, y2):
+        for x, y in coords:
+            if x1 <= x < x2 and y1 <= y < y2:
+                yield x, y
 
-    def randy():
-        yield randint(0, lim)
+    x1, x2, y1, y2 = -1, 2000, 0, 8000
 
-    test_rounds = 100000
-    num_coords = 1000
-    x1, x2, y1, y2 = 20, 1200, 300, 400
-    for _ in range(test_rounds):
-        coordinates = [tuple([next(randy()), next(randy())]) for _ in range(num_coords)]
-        # coordinates = [(64, 47), (37, 11), (21, 89), (41, 80), (73, 100), (26, 47)]
-        r2d = LayeredRangeTree(coordinates)
-        # print(r2d)
-        rep = r2d.query_layered_range_tree(x1, x2, y1, y2)
-        range_list = list(rep)
-        brute = list(brute_algorithm(coordinates, x1, x2, y1, y2))
-        print(len(brute), len(range_list))
-        # print(range_list, '\n', brute)
-        if len(range_list) != len(brute):
-            print(coordinates)
-            print(len(brute), len(range_list))
-            raise ValueError()
+    # points = np.array([(4728, 2874), (4728, 473), (2598, 4011)])
+
+    # points = np.array([(1063, 6064), (1384, 477), (1298, 3993)])
+    points = np.array(
+        [
+            (3487, 607),
+            (2991, 8962),
+            (6407, 3061),
+            (7487, 7634),
+            (52, 583),
+            (9966, 8363),
+            (2349, 7102),
+            (1837, 4909),
+            (7362, 8135),
+            (3978, 5650),
+            (1753, 5981),
+            (1021, 2656),
+            (5343, 8974),
+            (3747, 1250),
+        ]
+    )
+
+    # r2d = LayeredRangeTree.construct(points)
+    # result = r2d.query(Rectangle(Interval(x1, x2), Interval(y1, y2)))
+    # res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
+    # res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
+    # if res_n != res_m:
+    #     print(r2d.pretty_str())
+    #     raise ValueError(
+    #         f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
+    #     )
+
+    num_coords = 300
+    for _ in range(100):
+        points = np.random.randint(0, 10000, (num_coords, 2))
+        r2d = LayeredRangeTree.construct(points)
+        result = list(r2d.query(Rectangle(Interval(x1, x2), Interval(y1, y2))))
+
+        res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
+        res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
+
+        if res_n != res_m:
+            print(r2d.pretty_str())
+            raise ValueError(
+                f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
+            )
