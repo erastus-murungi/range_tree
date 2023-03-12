@@ -5,8 +5,8 @@ from typing import Optional, Iterator
 
 import numpy as np
 
-from range2d import RangeTree2D, Rectangle
-from rangetree import Leaf, RangeTree, Interval, OUT_OF_BOUNDS
+from range2d import RangeTree2D
+from rangetree import Leaf, RangeTree, Interval, OUT_OF_BOUNDS, HyperRectangle
 
 LEFT, RIGHT = 1, 2
 
@@ -41,19 +41,18 @@ class LayeredRangeTree(RangeTree2D):
             Only the leaves store the full coordinates. Internal nodes only store splitting values"""
             # sort by y_values
 
-            n = len(assoc)
-
             if assoc.size == 0:
                 return OUT_OF_BOUNDS
-            elif n == 1:
+            elif len(assoc) == 1:
                 return Leaf(assoc[0, :-2], axis)
             else:
-                split_x_value = assoc[n // 2, axis]
+                mid = (len(assoc) - 1) // 2
+                split_x_value = assoc[mid, axis]
                 y_axis = axis + 1
 
                 assoc_sorted = np.array(sorted(assoc, key=itemgetter(y_axis)))
 
-                assoc_left, assoc_right = assoc[: n // 2, :], assoc[n // 2 :, :]
+                assoc_left, assoc_right = assoc[: mid + 1, :], assoc[mid + 1 :, :]
                 assoc_left_sorted = np.array(sorted(assoc_left, key=itemgetter(y_axis)))
                 assoc_right_sorted = np.array(
                     sorted(assoc_right, key=itemgetter(y_axis))
@@ -89,7 +88,7 @@ class LayeredRangeTree(RangeTree2D):
         return construct_impl(assoc, axis)
 
     def report_nodes(
-        self, v: RangeTree, box: Rectangle, frm: int
+        self, v: RangeTree, box: HyperRectangle, frm: int
     ) -> Iterator[np.array]:
         # report left subtree
         if isinstance(v, Leaf):
@@ -100,7 +99,7 @@ class LayeredRangeTree(RangeTree2D):
                 v.assoc[frm:, :-2],
             )
 
-    def query(self, box: Rectangle):
+    def query(self, box: HyperRectangle, axis=0):
         v_split = RangeTree.find_split_node(self, box.x_range)
         if isinstance(v_split, Leaf):
             # check if the point in v_split, leaves have no pointers
@@ -194,11 +193,11 @@ if __name__ == "__main__":
     #         f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
     #     )
 
-    num_coords = 300
+    num_coords = 3
     for _ in range(100):
         points = np.random.randint(0, 10000, (num_coords, 2))
         r2d = LayeredRangeTree.construct(points)
-        result = list(r2d.query(Rectangle(Interval(x1, x2), Interval(y1, y2))))
+        result = list(r2d.query(HyperRectangle([Interval(x1, x2), Interval(y1, y2)])))
 
         res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
         res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))

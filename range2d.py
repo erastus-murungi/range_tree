@@ -1,21 +1,10 @@
-from typing import NamedTuple, Iterator
+from operator import itemgetter
+from typing import Iterator
 
 import numpy as np
 
 from range1d import RangeTree1D
-from rangetree import RangeTree, OUT_OF_BOUNDS, Leaf, Interval
-
-__author__ = "Erastus Murungi"
-__email__ = "murungi@mit.edu"
-
-
-class Rectangle(NamedTuple):
-    x_range: Interval
-    y_range: Interval
-
-    def __contains__(self, item):
-        x, y = item
-        return x in self.x_range and y in self.y_range
+from rangetree import RangeTree, OUT_OF_BOUNDS, Leaf, Interval, HyperRectangle
 
 
 class RangeTree2D(RangeTree1D):
@@ -28,7 +17,7 @@ class RangeTree2D(RangeTree1D):
         split_value: float,
         left: RangeTree,
         right: RangeTree,
-        assoc: RangeTree1D | np.ndarray,
+        assoc: RangeTree | np.ndarray,
     ):
         super().__init__(split_value, left, right)
         self.assoc = assoc
@@ -43,19 +32,17 @@ class RangeTree2D(RangeTree1D):
             elif len(points) == 1:
                 return Leaf(points[0], axis)
 
-            mid = (len(points)) >> 1
+            mid = ((len(points)) - 1) >> 1
             return RangeTree2D(
                 points[mid][axis],
-                construct_impl(points[:mid], axis),
-                construct_impl(points[mid:], axis),
-                RangeTree1D.construct(points, axis=axis),
+                construct_impl(points[: mid + 1], axis),
+                construct_impl(points[mid + 1 :], axis),
+                RangeTree1D.construct(points, axis=axis + 1),
             )
 
-        return construct_impl(
-            np.array(sorted(values, key=lambda row: row[axis])), axis + 1
-        )
+        return construct_impl(np.array(sorted(values, key=itemgetter(axis))), axis)
 
-    def query(self, box: Rectangle) -> Iterator[np.ndarray]:
+    def query(self, box: HyperRectangle, axis=0) -> Iterator[np.ndarray]:
         """A query with an axis-parallel rectangle in a range tree storing n
         points takes O(log2 n+k) time, where k is the number of reported points
         """
@@ -72,7 +59,7 @@ class RangeTree2D(RangeTree1D):
             v = v_split.left
             while not isinstance(v, Leaf):
                 if box.x_range.start <= v.split_value:
-                    yield from v.right.assoc.query_axis(box.y_range)
+                    yield from v.right.assoc.query(box, axis + 1)
                     v = v.left
                 else:
                     v = v.right
@@ -87,7 +74,7 @@ class RangeTree2D(RangeTree1D):
                 if v is OUT_OF_BOUNDS:
                     return
                 if v.split_value < box.x_range.end:
-                    yield from v.left.assoc.query_axis(box.y_range)
+                    yield from v.left.assoc.query(box, axis + 1)
                     v = v.right
                 else:
                     v = v.left
@@ -106,42 +93,51 @@ if __name__ == "__main__":
 
     x1, x2, y1, y2 = -1, 3000, 0, 8000
 
-    num_coords = 10
-    for _ in range(10):
+    num_coords = 6
+    for _ in range(1000):
         points = np.random.randint(0, 10000, (num_coords, 2))
         r2d = RangeTree2D.construct(points)
-        result = r2d.query(Rectangle(Interval(x1, x2), Interval(y1, y2)))
+        result = r2d.query(HyperRectangle([Interval(x1, x2), Interval(y1, y2)]))
 
         res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
         res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
 
         if res_n != res_m:
             print(r2d.pretty_str())
-            raise ValueError(f"\n{res_n}\n {res_m}\n {list(points)}")
+            raise ValueError(
+                f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
+            )
 
     # import matplotlib.pyplot as plt
-# from matplotlib.patches import Rectangle
 
-#     points = np.array([[2054, 8435],[ 595, 9691], [ 427, 3716]])
-#
-#     r2d = RangeTree2D.construct(points)
-#     result = r2d.query(Rectangle(Interval(x1, x2), Interval(y1, y2)))
-# #
-#     res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
-#     res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
+    # points = np.array(
+    #     [
+    #         (7417, 8462),
+    #         (884, 2521),
+    #         (2000, 4728),
+    #         (1134, 7744),
+    #         (138, 5405),
+    #         (2162, 7793),
+    #     ]
+    # )
+    #
+    # r2d = RangeTree2D.construct(points)
+    # print(r2d.pretty_str())
+    # result = r2d.query(HyperRectangle([Interval(x1, x2), Interval(y1, y2)]))
+    #
+    # res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
+    # res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
 
-# plt.scatter(points[:, 0], points[:, 1], label='all')
-# plt.scatter(np.array(res_n)[:, 0], np.array(res_n)[:, 1], label='range tree')
-# plt.scatter(np.array(res_m)[:, 0], np.array(res_m)[:, 1], label='brute force')
-# plt.gca().add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, facecolor="none", ec='k', lw=2))
-# plt.legend()
-# plt.show()
+    # plt.scatter(points[:, 0], points[:, 1], label='all')
+    # plt.scatter(np.array(res_n)[:, 0], np.array(res_n)[:, 1], label='range tree')
+    # plt.scatter(np.array(res_m)[:, 0], np.array(res_m)[:, 1], label='brute force')
+    # plt.gca().add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, facecolor="none", ec='k', lw=2))
+    # plt.legend()
+    # plt.show()
 
-# for point in r2d.query(
-#     Rectangle(Interval(x1, x2), Interval(y1, y2))
-# ):
-#     print(point)
-#
-# if res_n != res_m:
-#     print(r2d.pretty_str())
-#     raise ValueError(f"\n{res_n}\n {res_m}\n {list(points)}")
+    # for point in r2d.query(Rectangle(Interval(x1, x2), Interval(y1, y2))):
+    #     print(point)
+    #
+    # if res_n != res_m:
+    #     print(r2d.pretty_str())
+    #     raise ValueError(f"\n{res_n}\n {res_m}\n {list(points)}")

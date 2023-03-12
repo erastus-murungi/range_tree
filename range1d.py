@@ -1,11 +1,11 @@
 from functools import cache
 from sys import maxsize
-from typing import Union, Iterator
+from typing import Iterator
 
 import numpy as np
 from more_itertools import only
 
-from rangetree import RangeTree, Leaf, OUT_OF_BOUNDS, Interval
+from rangetree import RangeTree, Leaf, OUT_OF_BOUNDS, Interval, HyperRectangle
 
 
 class RangeTree1D(RangeTree):
@@ -82,7 +82,7 @@ class RangeTree1D(RangeTree):
             too_long="Expected to only have one node after binary tree construction",
         )
 
-    def query_axis(self, interval: Interval) -> Iterator[np.array]:
+    def query_axis(self, interval: Interval, axis=0) -> Iterator[np.array]:
         """Queries a 1D Range Tree.
         Let P be a set of n points in 1-D space. The set P
         can be stored in a balanced binary search tree, which uses O(n) storage and
@@ -123,7 +123,8 @@ class RangeTree1D(RangeTree):
             if v.split_value in interval:
                 yield from v.report_leaves()
 
-    query = query_axis
+    def query(self, item: HyperRectangle, axis: int = 0):
+        yield from self.query_axis(item.intervals[axis])
 
     def __getitem__(self, item: slice):
         """Assumes item is a slice object.
@@ -141,7 +142,7 @@ class RangeTree1D(RangeTree):
         if start > stop:
             raise IndexError("make sure start <= stop")
 
-        return self.query(Interval(start, stop))
+        return self.query_axis(Interval(start, stop))
 
 
 def brute(points, x1, x2):
@@ -153,10 +154,10 @@ def brute(points, x1, x2):
 if __name__ == "__main__":
     from random import randint
 
-    num_points = 10000
-    x1, x2 = 5000, 7000
+    num_points = 100
+    x1, x2 = 3000, 7000
 
-    for _ in range(5):
+    for _ in range(1000):
         points = np.random.randint(0, 10000, (num_points, 1))
         rtree = RangeTree1D.construct(points)
 

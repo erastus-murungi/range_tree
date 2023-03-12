@@ -13,9 +13,27 @@ class Interval(NamedTuple):
         return self.start <= item < self.end
 
 
-class SupportsAxisQuery(Protocol):
-    def query_axis(self, interval: Interval):
-        pass
+class HyperRectangle(NamedTuple):
+    intervals: list[Interval]
+
+    def __contains__(self, item):
+        if len(item) != len(self.intervals):
+            raise ValueError()
+        return all(value in interval for value, interval in zip(item, self.intervals))
+
+    def __iter__(self):
+        yield from self.intervals
+
+    @property
+    def x_range(self):
+        return self.intervals[0]
+
+    @property
+    def y_range(self):
+        return self.intervals[1]
+
+    def __getitem__(self, item):
+        return HyperRectangle(self.intervals[item.start :])
 
 
 class RangeTree(ABC):
@@ -53,7 +71,7 @@ class RangeTree(ABC):
 
         v = root
         while not isinstance(v, Leaf) and (
-            v.split_value >= interval.end or v.split_value < interval.start
+            interval.end <= v.split_value or interval.start > v.split_value
         ):
             v = v.left if interval.end <= v.split_value else v.right
         return v
@@ -71,12 +89,8 @@ class Leaf(RangeTree):
 
     construct = __init__
 
-    def query_axis(self, interval: Interval):
-        if self is not OUT_OF_BOUNDS and self.split_value in interval:
-            yield self.point
-
-    def query(self, bound, axis: int = 0):
-        if self is not OUT_OF_BOUNDS and self.point[axis:] in bound:
+    def query(self, bound: HyperRectangle, axis: int = 0):
+        if self is not OUT_OF_BOUNDS and self.point[axis:] in bound[axis:]:
             yield self.point
 
     @property

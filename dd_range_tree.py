@@ -1,31 +1,12 @@
 from operator import itemgetter
-from typing import NamedTuple
+from typing import Type
 
 import numpy as np
 
 from layered_range_tree import LayeredRangeTree
+from range1d import RangeTree1D
 from range2d import RangeTree2D
-from rangetree import OUT_OF_BOUNDS, Leaf, RangeTree, Interval
-
-
-class HyperRectangle(NamedTuple):
-    intervals: list[Interval]
-
-    def __contains__(self, item):
-        if len(item) != len(self.intervals):
-            raise ValueError()
-        return all(value in interval for value, interval in zip(item, self.intervals))
-
-    def __iter__(self):
-        yield from self.intervals
-
-    @property
-    def x_range(self):
-        return self.intervals[0]
-
-    @property
-    def y_range(self):
-        return self.intervals[1]
+from rangetree import OUT_OF_BOUNDS, Leaf, RangeTree, Interval, HyperRectangle
 
 
 class DDRangeTree(RangeTree2D):
@@ -46,12 +27,14 @@ class DDRangeTree(RangeTree2D):
     def construct(values: np.ndarray, axis: int = 0):
         _, max_depth = values.shape
 
-        if max_depth == 2:
+        if max_depth == 1:
+            return RangeTree1D.construct(values)
+        elif max_depth == 2:
             return LayeredRangeTree.construct(values)
 
         sorted_by_x = np.array(sorted(values, key=itemgetter(axis)))
 
-        def get_correct_tree(depth) -> RangeTree:
+        def get_correct_tree(depth) -> Type[RangeTree]:
             if max_depth - depth == 3:
                 return LayeredRangeTree
             return DDRangeTree
@@ -63,11 +46,11 @@ class DDRangeTree(RangeTree2D):
                 return Leaf(points[0], depth)
 
             tree = get_correct_tree(depth).construct(points, depth + 1)
-            mid = (len(points)) >> 1
+            mid = ((len(points)) - 1) >> 1
             return DDRangeTree(
                 points[mid][depth],
-                construct_impl(points[mid:], depth),
-                construct_impl(points[:mid], depth),
+                construct_impl(points[: mid + 1], depth),
+                construct_impl(points[mid + 1 :], depth),
                 tree,
                 depth,
             )
@@ -93,14 +76,13 @@ class DDRangeTree(RangeTree2D):
                 if v.split_value >= x_range.start:
                     # report right subtree
                     yield from v.right.query(
-                        HyperRectangle(hyper_rectangle.intervals[depth + 1 :]),
-                        depth + 1,
+                        hyper_rectangle,
                     )
                     v = v.left
                 else:
                     v = v.right
             # v is now a leaf
-            if v in hyper_rectangle:
+            if v.point in hyper_rectangle:
                 yield v.point
             # now we follow right side
             v = v_split.right
@@ -109,40 +91,32 @@ class DDRangeTree(RangeTree2D):
                     return
                 if v.split_value < x_range.end:
                     # report left subtree
-                    yield from v.left.query(
-                        HyperRectangle(hyper_rectangle.intervals[depth + 1 :]),
-                        depth + 1,
-                    )
+                    yield from v.left.query(hyper_rectangle)
                     # it is possible to traverse to an external node
                     v = v.right
                 else:
                     v = v.left
             # check whether this point should be included too
-            if v in hyper_rectangle:
+            if v.point in hyper_rectangle:
                 yield v.point
 
 
 def brute_algorithm(coords, rectangle):
     for coord in coords:
         if all(x in interval for x, interval in zip(coord, rectangle)):
-            yield coord
+            yield tuple(coord)
 
 
 if __name__ == "__main__":
-    from random import randint
 
-    d = 5
-    test_rounds = 1
+    start, end = 0, 7000
 
-    start, end = 0, 5000
-
-    num_coords = 10
+    dimensions = 4
+    n_coords = 20
     for _ in range(100):
-        points = np.random.randint(0, 10000, (3, 3))
+        points = np.random.randint(0, 10000, (n_coords, dimensions))
         r2d = DDRangeTree.construct(points)
-        rectangle = HyperRectangle(
-            [Interval(start, end), Interval(start, end), Interval(start, end)]
-        )
+        rectangle = HyperRectangle([Interval(start, end) for _ in range(dimensions)])
         result = r2d.query(rectangle)
 
         res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
@@ -150,4 +124,35 @@ if __name__ == "__main__":
 
         if res_n != res_m:
             print(r2d.pretty_str())
-            raise ValueError(f"\n{res_n}\n {res_m}\n {list(points)}")
+            raise ValueError(
+                f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
+            )
+
+    # points = np.array(
+    #     [
+    #         (658, 887, 4316, 3197),
+    #         (5253, 8682, 8034, 8963),
+    #         (545, 8267, 8317, 1488),
+    #         (2237, 709, 8149, 9034),
+    #         (6351, 7637, 2006, 8695),
+    #         (2881, 3866, 5785, 8742),
+    #         (3930, 9347, 8664, 1383),
+    #         (7057, 9274, 7207, 6310),
+    #         (3562, 6999, 5495, 1149),
+    #         (4381, 8845, 2782, 1130),
+    #     ]
+    # )
+    # r2d = DDRangeTree.construct(points)
+    # print(r2d.pretty_str())
+    # rectangle = HyperRectangle([Interval(start, end) for _ in range(points.shape[1])])
+    # result = r2d.query(rectangle)
+    # # for r in result:
+    # #     print(r)
+    #
+    # res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
+    # res_m = list(sorted(brute_algorithm(points, rectangle)))
+    #
+    # if res_n != res_m:
+    #     raise ValueError(
+    #         f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
+    #     )
