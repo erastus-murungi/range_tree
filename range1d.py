@@ -1,3 +1,4 @@
+import statistics
 from functools import cache
 from sys import maxsize
 from typing import Iterator
@@ -82,7 +83,24 @@ class RangeTree1D(RangeTree):
             too_long="Expected to only have one node after binary tree construction",
         )
 
-    def query_axis(self, interval: Interval, axis=0) -> Iterator[np.array]:
+    def query_axis_recursive(self, query_interval: Interval):
+        stack = [(self, Interval(-maxsize, maxsize))]
+        while stack:
+            current_node, x_range = stack.pop()
+
+            if isinstance(current_node, Leaf):
+                yield from current_node.query_interval(query_interval)
+            elif query_interval.contains(x_range):
+                yield from current_node.report_leaves()
+            elif not query_interval.is_disjoint_from(x_range):
+                stack.extend(
+                    (
+                        (current_node.right, Interval(current_node.split_value, x_range.end)),
+                        (current_node.left, Interval(x_range.start, current_node.split_value)),
+                    )
+                )
+
+    def query_axis(self, interval: Interval) -> Iterator[np.array]:
         """Queries a 1D Range Tree.
         Let P be a set of n points in 1-D space. The set P
         can be stored in a balanced binary search tree, which uses O(n) storage and
@@ -153,22 +171,40 @@ def brute(points, x1, x2):
 
 if __name__ == "__main__":
     from random import randint
+    from time import monotonic_ns
 
-    num_points = 100
+    num_points = 5
     x1, x2 = 3000, 7000
 
-    for _ in range(1000):
+    times1 = []
+    times2 = []
+    #
+    for _ in range(10000):
         points = np.random.randint(0, 10000, (num_points, 1))
         rtree = RangeTree1D.construct(points)
 
-        res_m = list(sorted(brute(points, x1, x2)))
-        res_n = list(rtree[x1:x2])
-        if list(sorted(res_n)) != list(sorted(res_m)):
-            raise ValueError(f"\n{res_n}\n {res_m}\n {points}")
+        start = monotonic_ns()
+        res_n = list(rtree.query_axis_recursive(Interval(x1, x2)))
+        times1.append(monotonic_ns() - start)
 
-        # print(RangeTree1D.find_split_value.cache_info())
-    # points = np.array([[6, 1, 0, 6, 1]]).T
-    # rtree = RangeTree1D(points)
-    # res_n = list(rtree[x1:x2])
-    # print(res_n)
-    # print(list(brute(points, x1, x2)))
+        start = monotonic_ns()
+        res_n = list(rtree.query_axis(Interval(x1, x2)))
+        times2.append(monotonic_ns() - start)
+
+        res_m = list(sorted(brute(points, x1, x2)))
+        res_n = list(rtree.query_axis_recursive(Interval(x1, x2)))
+        if list(sorted(res_n)) != list(sorted(res_m)):
+            raise ValueError(
+                f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
+            )
+    print('query axis recursive', statistics.mean(times1))
+    print('query axis', statistics.mean(times2))
+
+    # points = np.array([(9084,), (5551,), (1139,), (9227,), (3000,)])
+    # rtree = RangeTree1D.construct(points)
+    # print(RangeTree1D.find_split_value.cache_info())
+    # print(rtree.pretty_str())
+    # res_n = list(rtree.query_axis_recursive(Interval(x1, x2), Interval(-maxsize, maxsize)))
+    # res_m = list(sorted(brute(points, x1, x2)))
+    # if list(sorted(res_n)) != list(sorted(res_m)):
+    #     raise ValueError(f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}")

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from sys import maxsize
-from typing import Iterator, NamedTuple, Protocol
+from typing import Iterator, NamedTuple
 
 import numpy as np
 
@@ -11,6 +11,12 @@ class Interval(NamedTuple):
 
     def __contains__(self, item: float):
         return self.start <= item < self.end
+
+    def is_disjoint_from(self, other: "Interval"):
+        return self.start > other.end or other.start > self.end
+
+    def contains(self, other: "Interval"):
+        return other.start >= self.start and other.end < self.end
 
 
 class HyperRectangle(NamedTuple):
@@ -52,11 +58,11 @@ class RangeTree(ABC):
 
     @abstractmethod
     def yield_line(self, indent: str, prefix: str) -> Iterator[str]:
-        ...
+        pass
 
     @abstractmethod
     def query(self, item, axis: int = 0):
-        ...
+        pass
 
     @property
     def assoc(self):
@@ -91,6 +97,10 @@ class Leaf(RangeTree):
 
     def query(self, bound: HyperRectangle, axis: int = 0):
         if self is not OUT_OF_BOUNDS and self.point[axis:] in bound[axis:]:
+            yield self.point
+
+    def query_interval(self, interval: Interval, axis: int = 0):
+        if self is not OUT_OF_BOUNDS and self.point[axis] in interval:
             yield self.point
 
     @property

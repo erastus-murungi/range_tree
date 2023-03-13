@@ -18,7 +18,7 @@ class DDRangeTree(RangeTree2D):
         left: RangeTree,
         right: RangeTree,
         assoc: RangeTree,
-        depth,
+        depth: int,
     ):
         super().__init__(split_value, left, right, assoc)
         self.depth = depth
@@ -56,11 +56,6 @@ class DDRangeTree(RangeTree2D):
             )
 
         return construct_impl(sorted_by_x, axis)
-
-    def get_correct_tree(self, depth):
-        if self.depth - depth == 3:
-            return LayeredRangeTree
-        return DDRangeTree
 
     def query(self, hyper_rectangle: HyperRectangle, depth: int = 0):
         v_split = self.find_split_node(self, hyper_rectangle.x_range)
