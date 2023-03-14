@@ -1,9 +1,8 @@
 from heapq import heappop, heappush
 
 import numpy as np
-from scipy.spatial.distance import minkowski
 
-from bpq import BoundedPriorityQueue
+from kdtree import l2_norm, BoundedPriorityQueue
 
 
 class VPTree:
@@ -11,7 +10,7 @@ class VPTree:
         self.mu = None
         self.right = None
         self.left = None
-        self.vantage_point = self.select_vantage_point(points, distance_function)
+        self.vantage_point = self.select_vantage_point(points)
 
         #  build vantage point tree
 
@@ -32,20 +31,20 @@ class VPTree:
             else:
                 outside.append(point)
 
-        # try parallelizing this step
+        # can be run in parallel
         if len(inside) > 0:
             self.left = VPTree(inside, distance_function)
         if len(outside) > 0:
             self.right = VPTree(outside, distance_function)
 
     @staticmethod
-    def addpoint(stack, node, query_point, distance=minkowski):
+    def addpoint(stack, node, query_point, distance=l2_norm):
         if node is not None:
             dist = distance(node.vantage_point, query_point)
             heappush(stack, (dist, node))
 
     @staticmethod
-    def select_vantage_point(points, distance_function):
+    def select_vantage_point(points):
         # if len(points) <= 10:
         return points.pop(np.random.randint(0, len(points)))
         # else:
@@ -70,8 +69,8 @@ class VPTree:
         #     points.remove(best_point)
         #     return best_point
 
-    def k_nearest_neighbors(self, query, k=1, distance=minkowski):
-        queue = BoundedPriorityQueue(k, query)
+    def k_nearest_neighbors(self, query, k=1, distance=l2_norm):
+        queue = BoundedPriorityQueue(k, query, distance)
         tau = np.inf
         tovisit = []
         self.addpoint(tovisit, self, query)
@@ -86,14 +85,14 @@ class VPTree:
                 continue
 
             if dist < tau:
-                queue.push(node.vantage_point, dist)
+                queue.append(node.vantage_point, dist)
             if queue.is_full:
                 tau, _ = queue.peek()
             if node.is_leaf:
                 seen += len(node.children)
                 for child in node.children:
                     d = distance(child, query)
-                    queue.push(child, d)
+                    queue.append(child, d)
                 if queue.is_full:
                     tau, _ = queue.peek()
                 continue
@@ -106,7 +105,7 @@ class VPTree:
                 self.addpoint(tovisit, node.right, query)
                 if dist - node.mu <= tau:
                     self.addpoint(tovisit, node.left, query)
-        return queue.iteritems(), seen
+        return queue, seen
 
     @property
     def isleaf(self):
@@ -143,7 +142,7 @@ if __name__ == "__main__":
         (np.random.randint(0, 100000), np.random.randint(0, 100000))
         for _ in range(num_points)
     ]
-    vp = VPTree(coords, minkowski)
+    vp = VPTree(coords, l2_norm)
     q_point = (500, 1000)
     print(vp.size())
     x, total_seen = vp.k_nearest_neighbors(q_point, 4)

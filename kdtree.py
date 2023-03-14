@@ -1,21 +1,67 @@
 from abc import ABC, abstractmethod
 from bisect import insort
-from operator import itemgetter
+from operator import attrgetter, itemgetter
 from sys import maxsize
-from typing import Iterator, Optional
+from typing import Callable, Iterator, NamedTuple, Optional
 
 import numpy as np
+import numpy.typing as npt
 
-from bpq import BoundedPriorityQueue, NNResult
 from rangetree import Interval, Orthotope
 
-DataPoint = np.ndarray
+Point = npt.NDArray[float]
+Points = Point
+
+
+class NNResult(NamedTuple):
+    point: Point
+    distance: float
+
+
+class BoundedPriorityQueue(list[NNResult]):
+    """Fast list-based bounded priority queue."""
+
+    __slots__ = ("_capacity", "_distance_function", "_reference_point")
+
+    def __init__(
+        self,
+        capacity: int,
+        reference_point: Point,
+        distance_function: Callable[[Point, Point], float],
+    ):
+        super().__init__()
+        self._reference_point = reference_point
+        self._capacity = capacity
+        self._distance_function = distance_function
+
+    def append(self, point: Point, distance=None):
+        if not distance:
+            distance = self._distance_function(point, self._reference_point)
+        if len(self) < self._capacity or distance < self[-1].distance:
+            insort(
+                self,
+                NNResult(point, distance),
+                key=attrgetter("distance"),
+            )
+            if len(self) > self._capacity:
+                self.pop()
+
+    def extend(self, points: Points):
+        for point in points:
+            self.append(point)
+
+    def is_full(self):
+        return len(self) == self._capacity
+
+    def peek(self):
+        if len(self) > 0:
+            return self[-1]
 
 
 class KDNode(ABC):
     __slots__ = "data"
 
-    def __init__(self, data: DataPoint):
+    def __init__(self, data: Point):
         self.data = data
 
     @abstractmethod
@@ -154,7 +200,7 @@ class KDTree:
     def __init__(
         self,
         *,
-        data_points: DataPoint = None,
+        data_points: Points = None,
         n_dims: Optional[int] = None,
         dist_fn=l2_norm,
         leaf_size: int = 1,
@@ -177,7 +223,7 @@ class KDTree:
             ]
         )  # O(k lg n)
 
-    def build(self, data_points: np.ndarray, dim: int, n_dims: int) -> KDNode:
+    def build(self, data_points: Points, dim: int, n_dims: int) -> KDNode:
         # Order O(n^2 lg n) build time
         # Can be sped up using a linear time median_low finding algorithm
         # Or maintaining a k sorted lists of points to enable quick median finding. The construction of time f such
@@ -262,12 +308,12 @@ class KDTree:
         return self._region.intervals[dim].end
 
     def _update_region_after_remove(self, point: np.ndarray):
-        for axis, (p, interval) in enumerate(zip(point, self._region.intervals)):
-            if p == self.maximum(axis):
+        for axis, (value, interval) in enumerate(zip(point, self._region.intervals)):
+            if value == self.maximum(axis):
                 self._region.intervals[axis] = Interval(
                     interval.start, self.max_value(axis)
                 )
-            elif p == self.minimum(axis):
+            elif value == self.minimum(axis):
                 self._region.intervals[axis] = Interval(
                     self.min_value(axis), interval.end
                 )
@@ -282,7 +328,9 @@ class KDTree:
             nonlocal best, point
 
             if node.data.size > 0:
-                local_best = min(node.data, key=lambda p: self._dist_fn(p, point))
+                local_best = min(
+                    node.data, key=lambda value: self._dist_fn(value, point)
+                )
                 if (distance := self._dist_fn(local_best, point)) < best.distance:
                     best = NNResult(local_best, distance)
 
@@ -357,19 +405,19 @@ class KDTree:
     def remove(self, point):
         assert len(point) == self._n_dims
 
-        def remove_impl(node: KDNode, point: np.ndarray, cd: int) -> KDNode:
+        def remove_impl(node: KDNode, query_point: np.ndarray, cd: int) -> KDNode:
             if isinstance(node, Leaf):
-                for index, p in enumerate(node.data):
-                    if np.array_equal(p, point):
+                for index, value in enumerate(node.data):
+                    if np.array_equal(value, query_point):
                         node.data = np.r_[node.data[:index], node.data[index + 1 :]]
                         return node
                 if isinstance(node, Leaf):
-                    raise ValueError(f"point {point} not found {list(points)}")
+                    raise ValueError(f"point {query_point} not found")
             else:
                 next_cd = (cd + 1) % self._n_dims
 
-                for index, p in enumerate(node.data):
-                    if np.array_equal(p, point):
+                for index, value in enumerate(node.data):
+                    if np.array_equal(value, query_point):
                         node.data = np.r_[node.data[:index], node.data[index + 1 :]]
                         # replace this node with its successor in the same dimension
                         if node.data.size == 0:
@@ -386,10 +434,10 @@ class KDTree:
                                 node.right = remove_impl(node.right, data, next_cd)
                         break
                 else:
-                    if point[cd] < node.data[0, cd]:
-                        node.left = remove_impl(node.left, point, next_cd)
+                    if query_point[cd] < node.data[0, cd]:
+                        node.left = remove_impl(node.left, query_point, next_cd)
                     else:
-                        node.right = remove_impl(node.right, point, next_cd)
+                        node.right = remove_impl(node.right, query_point, next_cd)
 
                 if not node.left and not node.right:
                     return Leaf(node.data)
@@ -415,94 +463,7 @@ class KDTree:
         return f"{self.__class__.__name__}<d={self._n_dims} dist_func={self._dist_fn.__name__}>({self._root}"
 
 
-def brute_nearest_neighbor(coords, p, distance_function):
-    # naive nearest neighbor
-    best_dist, best_point = maxsize, None
-    for coord in coords:
-        dist = distance_function(coord, p)
-        if dist < best_dist:
-            best_dist, best_point = dist, coord
-    return best_point
-
-
-def brute_k_nearest_neighbors(coords, p, k, distance_function):
-    """Simple kNN for benchmarking"""
-    bpq = []
-    for coord in coords:
-        dist = distance_function(coord, p)
-        if len(bpq) < k or dist < bpq[-1].distance:
-            insort(bpq, NNResult(coord, dist), key=lambda nn_result: nn_result.distance)
-            if len(bpq) > k:
-                bpq.pop()
-    return bpq
-
-
 if __name__ == "__main__":
-    import numpy as np
+    import doctest
 
-    def brute_algorithm(coords, x1, x2, y1, y2):
-        for x, y in coords:
-            if x1 <= x < x2 and y1 <= y < y2:
-                yield x, y
-
-    x1, x2, y1, y2 = -1, 30, 0, 80
-
-    num_coords = 102
-    k = 34
-    for _ in range(100):
-        kd_tree = KDTree(n_dims=2)
-        points = np.random.randint(0, 100, (num_coords, 2))
-        # points = np.array([np.array([96, 57]), np.array([79, 86]), np.array([30, 24]), np.array([16, 79])])
-        for point in points:
-            kd_tree.insert(point)
-            # print(len(kd_tree))
-            assert point in kd_tree
-        for point in points:
-            # print(kd_tree.pretty_str())
-            kd_tree.remove(point)
-    # points = np.array([[15, 76], [9, 28], [52, 95]])
-    # reference_point = np.random.randint(0, 100, (2,))
-    # # reference_point = np.array([44, 14])
-    # kd_tree = KDTree(points)
-    # # result = r2d.range_search(Orthotope([Interval(x1, x2), Interval(y1, y2)]))
-    # result = kd_tree.k_nearest_neighbors(reference_point, k)
-    #
-    # res_n = [dist for _, dist in result]
-    # res_m = [
-    #     dist
-    #     for _, dist in brute_k_nearest_neighbors(
-    #         points, reference_point, k, l2_norm
-    #     )
-    # ]
-    #
-    # if res_n != res_m:
-    #     print(kd_tree.pretty_str())
-    #     raise ValueError(
-    #         f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
-    #     )
-
-    # actual = kd_tree.nearest_neighbor(reference_point).point
-    # expected = brute_nearest_neighbor(points, reference_point, l2_norm)
-    # if l2_norm(actual, reference_point) != l2_norm(expected, reference_point):
-    #     print(kd_tree.pretty_str())
-    #     raise ValueError(
-    #         f"{reference_point=}\n"
-    #         f"{actual=}<{l2_norm(reference_point, actual)}>\n"
-    #         f"{expected=}<{l2_norm(reference_point, expected)}>\n"
-    #         f"{points=}"
-    #     )
-
-    # p = np.array([(23, 48), (93, 56), (45, 56), (30, 37), (97, 25), (9, 52), (14, 1)])
-    #
-    # r2d = KDTree(p)
-    # print(r2d.pretty_str())
-    # print(r2d._region)
-    # result = r2d.range_search(Orthotope([Interval(x1, x2), Interval(y1, y2)]))
-    #
-    # res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
-    # res_m = list(sorted(brute_algorithm(p, x1, x2, y1, y2)))
-    #
-    # if res_n != res_m:
-    #     raise ValueError(
-    #         f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in p]}"
-    #     )
+    doctest.testmod()
