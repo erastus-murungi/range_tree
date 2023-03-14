@@ -666,9 +666,9 @@ class RedBlackTree:
             # assume that the black_height(t2) <= black_height(t1)
             # assumes that the trees have been augmented with black heights
             assert t1.black_height >= t2.black_height
-            if t1.root is t1.null:
+            if t1._root is t1.null:
                 return t2
-            if t2.root is t2.null:
+            if t2._root is t2.null:
                 return t1
             expected_len = len(t1) + len(t2)
 
@@ -683,7 +683,7 @@ class RedBlackTree:
             t2.delete(key)
             t2.augment_with_black_height()
 
-            node = t1.root
+            node = t1._root
             phi = node.parent
             while node is not self.null and not (
                 node.bh == t2.black_height and node.color == BLACK
@@ -697,14 +697,14 @@ class RedBlackTree:
 
             v = RBNode(key, item, phi, RED)
             if phi is t1.null:
-                t1.root = v
-            v.child = [t2.root, node]
-            node.parent = t2.root.parent = v
+                t1._root = v
+            v.child = [t2._root, node]
+            node.parent = t2._root.parent = v
             if phi not in [None, t1.null]:
                 phi.child[direction] = v
                 t1.__insert_fix(v)
-            t1.root.parent = t1.null
-            t1.size = expected_len
+            t1._root.parent = t1.null
+            t1._size = expected_len
             return t1
 
         self.augment_with_black_height()

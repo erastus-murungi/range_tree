@@ -6,7 +6,7 @@ import numpy as np
 from layered_range_tree import LayeredRangeTree
 from range1d import RangeTree1D
 from range2d import RangeTree2D
-from rangetree import OUT_OF_BOUNDS, Leaf, RangeTree, Interval, HyperRectangle
+from rangetree import OUT_OF_BOUNDS, Interval, Leaf, Orthotope, RangeTree
 
 
 class DDRangeTree(RangeTree2D):
@@ -40,7 +40,7 @@ class DDRangeTree(RangeTree2D):
             return DDRangeTree
 
         def construct_impl(points, depth: int):
-            if points.size == 0:
+            if points._size == 0:
                 return OUT_OF_BOUNDS
             elif len(points) == 1:
                 return Leaf(points[0], depth)
@@ -57,7 +57,7 @@ class DDRangeTree(RangeTree2D):
 
         return construct_impl(sorted_by_x, axis)
 
-    def query(self, hyper_rectangle: HyperRectangle, depth: int = 0):
+    def query(self, hyper_rectangle: Orthotope, depth: int = 0):
         v_split = self.find_split_node(self, hyper_rectangle.x_range)
         x_range = hyper_rectangle.x_range
 
@@ -111,7 +111,7 @@ if __name__ == "__main__":
     for _ in range(100):
         points = np.random.randint(0, 10000, (n_coords, dimensions))
         r2d = DDRangeTree.construct(points)
-        rectangle = HyperRectangle([Interval(start, end) for _ in range(dimensions)])
+        rectangle = Orthotope([Interval(start, end) for _ in range(dimensions)])
         result = r2d.query(rectangle)
 
         res_n = list(sorted([tuple(map(int, elem)) for elem in result]))

@@ -1,62 +1,82 @@
 from bisect import insort
+from typing import NamedTuple
 
-from scipy.spatial.distance import minkowski
+import numpy as np
+
+from rbt import RedBlackTree
 
 
-class BPQList:
-    """Fast list-based bounded priority queue."""
+class NNResult(NamedTuple):
+    point: np.ndarray
+    distance: float
 
-    def __init__(self, k, base, distance_function=minkowski):
-        self.bpq = []
+
+class BoundedPriorityQueueRBT:
+    """Simple bounded priority queue which uses a Red Black Tree as the underlying data structure."""
+
+    def __init__(self, k):
+        self.maxkey = -float("inf")
+        if k < 0:
+            raise ValueError("k should be larger than 0")
         self.k = k
-        self._base = base
-        self.distance_function = distance_function
+        self._bpq = RedBlackTree()
 
-    def push(self, coord, dist=None):
-        if dist is None:
-            dist = self.distance_function(coord, self._base)
-        if len(self.bpq) < self.k or dist < self.bpq[-1][0]:
-            insort(self.bpq, (dist, coord))
-            if len(self.bpq) > self.k:
-                self.bpq.pop()
+    def insert(self, key, item):
+        if self.k == 0:
+            return self.maxkey
+        if len(self._bpq) < self.k or key < self.maxkey:
+            self._bpq.insert(key, item)  # O (lg n)
+        if len(self._bpq) > self.k:
+            self._bpq.delete(self._bpq.maximum[0])  # O(lg n)
+        self.maxkey = self._bpq.maximum[0]  # (lg n)
+
+    def __setitem__(self, key, item=0):
+        assert (type(key)) in [int, float], "Invalid type of key."
+        self.insert(key, item)
 
     @property
     def isfull(self):
-        return len(self.bpq) == self.k
-
-    def shrink(self, new_k):
-        if new_k > self.k:
-            raise ValueError("New bound should be less")
-        self.bpq = self.bpq[:new_k]
-
-    def __setattr__(self, name, value):
-        if name == "self._base":
-            raise ValueError("{} is frozen".format(name))
-        else:
-            object.__setattr__(self, name, value)
-
-    def peek(self):
-        if len(self.bpq) > 0:
-            return self.bpq[-1]
+        return len(self._bpq) == self.k
 
     def iteritems(self):
-        yield from self.bpq
+        return self._bpq.iteritems()
 
-    def getpoints(self):
-        return list(map(lambda x: x[1], self.bpq))
+    def __repr__(self):
+        return repr(self._bpq.root)
 
-    def __len__(self):
-        return len(self.bpq)
+    def __str__(self):
+        return str(list(self._bpq.iteritems()))
 
 
-if __name__ == "__main__":
-    from random import randint
+class BoundedPriorityQueue(list[NNResult]):
+    """Fast list-based bounded priority queue."""
 
-    coords = [(randint(0, 1000), randint(0, 1000)) for _ in range(10)]
-    reference_point = (100, 100)
-    bpq = BPQList(3, reference_point)
-    for coord in coords:
-        print(bpq.isfull)
-        bpq.push(coord)
-    print(list(bpq.iteritems()))
-    print(bpq.peek())
+    __slots__ = ("_capacity", "_distance_function", "_base")
+
+    def __init__(self, capacity: int, base, distance_function):
+        super().__init__()
+        self._base = base
+        self._capacity = capacity
+        self._distance_function = distance_function
+
+    def append(self, point: np.ndarray):
+        distance = self._distance_function(point, self._base)
+        if len(self) < self._capacity or distance < self[-1].distance:
+            insort(
+                self,
+                NNResult(point, distance),
+                key=lambda nn_result: nn_result.distance,
+            )
+            if len(self) > self._capacity:
+                self.pop()
+
+    def extend(self, points):
+        for point in points:
+            self.append(point)
+
+    def is_full(self):
+        return len(self) == self._capacity
+
+    def peek(self):
+        if len(self) > 0:
+            return self[-1]

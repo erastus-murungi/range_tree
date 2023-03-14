@@ -1,12 +1,12 @@
 from bisect import bisect_left
 from itertools import takewhile
 from operator import itemgetter
-from typing import Optional, Iterator
+from typing import Iterator, Optional
 
 import numpy as np
 
 from range2d import RangeTree2D
-from rangetree import Leaf, RangeTree, Interval, OUT_OF_BOUNDS, HyperRectangle
+from rangetree import OUT_OF_BOUNDS, Interval, Leaf, Orthotope, RangeTree
 
 LEFT, RIGHT = 1, 2
 
@@ -88,7 +88,7 @@ class LayeredRangeTree(RangeTree2D):
         return construct_impl(assoc, axis)
 
     def report_nodes(
-        self, v: RangeTree, box: HyperRectangle, frm: int
+        self, v: RangeTree, box: Orthotope, frm: int
     ) -> Iterator[np.array]:
         # report left subtree
         if isinstance(v, Leaf):
@@ -99,7 +99,7 @@ class LayeredRangeTree(RangeTree2D):
                 v.assoc[frm:, :-2],
             )
 
-    def query(self, box: HyperRectangle, axis=0):
+    def query(self, box: Orthotope, axis=0):
         v_split = RangeTree.find_split_node(self, box.x_range)
         if isinstance(v_split, Leaf):
             # check if the point in v_split, leaves have no pointers
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     for _ in range(100):
         points = np.random.randint(0, 10000, (num_coords, 2))
         r2d = LayeredRangeTree.construct(points)
-        result = list(r2d.query(HyperRectangle([Interval(x1, x2), Interval(y1, y2)])))
+        result = list(r2d.query(Orthotope([Interval(x1, x2), Interval(y1, y2)])))
 
         res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
         res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))

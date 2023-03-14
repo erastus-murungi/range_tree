@@ -6,7 +6,7 @@ from typing import Iterator
 import numpy as np
 from more_itertools import only
 
-from rangetree import RangeTree, Leaf, OUT_OF_BOUNDS, Interval, HyperRectangle
+from rangetree import OUT_OF_BOUNDS, Interval, Leaf, Orthotope, RangeTree
 
 
 class RangeTree1D(RangeTree):
@@ -29,9 +29,6 @@ class RangeTree1D(RangeTree):
             self.left.find_split_value(),
             self.right.find_split_value(),
         )
-
-    def is_leaf(self):
-        return self.left is None and self.right is None
 
     def __repr__(self):
         return f"{type(self).__name__}({self.split_value})"
@@ -95,8 +92,14 @@ class RangeTree1D(RangeTree):
             elif not query_interval.is_disjoint_from(x_range):
                 stack.extend(
                     (
-                        (current_node.right, Interval(current_node.split_value, x_range.end)),
-                        (current_node.left, Interval(x_range.start, current_node.split_value)),
+                        (
+                            current_node.right,
+                            Interval(current_node.split_value, x_range.end),
+                        ),
+                        (
+                            current_node.left,
+                            Interval(x_range.start, current_node.split_value),
+                        ),
                     )
                 )
 
@@ -141,7 +144,7 @@ class RangeTree1D(RangeTree):
             if v.split_value in interval:
                 yield from v.report_leaves()
 
-    def query(self, item: HyperRectangle, axis: int = 0):
+    def query(self, item: Orthotope, axis: int = 0):
         yield from self.query_axis(item.intervals[axis])
 
     def __getitem__(self, item: slice):
@@ -197,8 +200,8 @@ if __name__ == "__main__":
             raise ValueError(
                 f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
             )
-    print('query axis recursive', statistics.mean(times1))
-    print('query axis', statistics.mean(times2))
+    print("query axis recursive", statistics.mean(times1))
+    print("query axis", statistics.mean(times2))
 
     # points = np.array([(9084,), (5551,), (1139,), (9227,), (3000,)])
     # rtree = RangeTree1D.construct(points)

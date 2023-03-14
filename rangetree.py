@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from sys import maxsize
-from typing import Iterator, NamedTuple
+from typing import Collection, Iterator, NamedTuple
 
 import numpy as np
 
@@ -18,14 +18,19 @@ class Interval(NamedTuple):
     def contains(self, other: "Interval"):
         return other.start >= self.start and other.end < self.end
 
+    def copy(self):
+        return Interval(self.start, self.end)
 
-class HyperRectangle(NamedTuple):
+
+class Orthotope(NamedTuple):
     intervals: list[Interval]
 
-    def __contains__(self, item):
-        if len(item) != len(self.intervals):
-            raise ValueError()
-        return all(value in interval for value, interval in zip(item, self.intervals))
+    def __contains__(self, points: Collection[float]):
+        if len(points) != len(self.intervals):
+            raise ValueError(
+                "expected the number of intervals to equal the number of points"
+            )
+        return all(value in interval for value, interval in zip(points, self.intervals))
 
     def __iter__(self):
         yield from self.intervals
@@ -39,7 +44,34 @@ class HyperRectangle(NamedTuple):
         return self.intervals[1]
 
     def __getitem__(self, item):
-        return HyperRectangle(self.intervals[item.start :])
+        return Orthotope(self.intervals[item.start :])
+
+    def copy(self):
+        return Orthotope([interval.copy() for interval in self.intervals])
+
+    def split(self, dim: int, split_value: float) -> tuple["Orthotope", "Orthotope"]:
+        region_right = self.copy()
+        dim_interval = self.intervals[dim]
+        if dim_interval.start <= split_value <= dim_interval.end:
+            self.intervals[dim] = Interval(dim_interval.start, split_value)
+            region_right.intervals[dim] = Interval(split_value, dim_interval.end)
+            return self, region_right
+        raise ValueError()
+
+    def contains(self, other: "Orthotope"):
+        return all(
+            my_interval.contains(other_interval)
+            for my_interval, other_interval in zip(self.intervals, other.intervals)
+        )
+
+    def is_disjoint_from(self, other: "Orthotope"):
+        return all(
+            my_interval.is_disjoint_from(other_interval)
+            for my_interval, other_interval in zip(self.intervals, other.intervals)
+        )
+
+    def __len__(self):
+        return len(self.intervals)
 
 
 class RangeTree(ABC):
@@ -95,7 +127,7 @@ class Leaf(RangeTree):
 
     construct = __init__
 
-    def query(self, bound: HyperRectangle, axis: int = 0):
+    def query(self, bound: Orthotope, axis: int = 0):
         if self is not OUT_OF_BOUNDS and self.point[axis:] in bound[axis:]:
             yield self.point
 

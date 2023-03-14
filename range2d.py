@@ -4,7 +4,7 @@ from typing import Iterator
 import numpy as np
 
 from range1d import RangeTree1D
-from rangetree import RangeTree, OUT_OF_BOUNDS, Leaf, Interval, HyperRectangle
+from rangetree import OUT_OF_BOUNDS, Interval, Leaf, Orthotope, RangeTree
 
 
 class RangeTree2D(RangeTree1D):
@@ -42,7 +42,7 @@ class RangeTree2D(RangeTree1D):
 
         return construct_impl(np.array(sorted(values, key=itemgetter(axis))), axis)
 
-    def query(self, box: HyperRectangle, axis=0) -> Iterator[np.ndarray]:
+    def query(self, box: Orthotope, axis=0) -> Iterator[np.ndarray]:
         """A query with an axis-parallel rectangle in a range tree storing n
         points takes O(log2 n+k) time, where k is the number of reported points
         """
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     for _ in range(1000):
         points = np.random.randint(0, 10000, (num_coords, 2))
         r2d = RangeTree2D.construct(points)
-        result = r2d.query(HyperRectangle([Interval(x1, x2), Interval(y1, y2)]))
+        result = r2d.query(Orthotope([Interval(x1, x2), Interval(y1, y2)]))
 
         res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
         res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))

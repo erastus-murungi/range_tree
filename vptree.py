@@ -3,7 +3,7 @@ from heapq import heappop, heappush
 import numpy as np
 from scipy.spatial.distance import minkowski
 
-from bpq import BPQList
+from bpq import BoundedPriorityQueue
 
 
 class VPTree:
@@ -71,7 +71,7 @@ class VPTree:
         #     return best_point
 
     def k_nearest_neighbors(self, query, k=1, distance=minkowski):
-        queue = BPQList(k, query)
+        queue = BoundedPriorityQueue(k, query)
         tau = np.inf
         tovisit = []
         self.addpoint(tovisit, self, query)
@@ -87,14 +87,14 @@ class VPTree:
 
             if dist < tau:
                 queue.push(node.vantage_point, dist)
-            if queue.isfull:
+            if queue.is_full:
                 tau, _ = queue.peek()
             if node.is_leaf:
                 seen += len(node.children)
                 for child in node.children:
                     d = distance(child, query)
                     queue.push(child, d)
-                if queue.isfull:
+                if queue.is_full:
                     tau, _ = queue.peek()
                 continue
 
