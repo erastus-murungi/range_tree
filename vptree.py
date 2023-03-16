@@ -1,151 +1,131 @@
-from heapq import heappop, heappush
+from abc import ABC, abstractmethod
+from collections import deque
+from random import sample
 
 import numpy as np
 
-from kdtree import l2_norm, BoundedPriorityQueue
+from kdtree import BoundedPriorityQueue, l2_norm
+
+
+class VantagePointRule(ABC):
+    @abstractmethod
+    def get(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        pass
+
+
+class RandomVantagePoint(VantagePointRule):
+    def get(self, points: np.ndarray):
+        random_index = np.random.randint(0, len(points))
+        return points[random_index], np.delete(points, random_index, axis=0)
+
+
+class BestSpreadVantagePoint(VantagePointRule):
+    def get(self, points):
+        # traditional vantage point selection method
+        # picks the point with the largest spread
+        num_samples = num_tests = max(10, len(points) // 1000)
+
+        list_points = list(points)
+        sampled_points = sample(list_points, num_samples)
+
+        best_spread = 0
+        best_point_index = None
+        best_point = None
+        for index, point in enumerate(sampled_points):
+            rand_points = sample(list_points, num_tests)
+            distances = np.linalg.norm(point - rand_points, axis=1)
+            mu = np.median(distances)
+
+            # can also use np.var. I think
+            spread = np.std(distances - mu)
+            if spread > best_spread:
+                best_spread = spread
+                best_point_index = index
+                best_point = point
+
+        return best_point, np.delete(points, best_point_index, axis=0)
 
 
 class VPTree:
-    def __init__(self, points, distance_function, leafsize=16):
-        self.mu = None
+    def __init__(
+        self,
+        points: np.ndarray,
+        leaf_size: int = 16,
+        vantage_point_rule: VantagePointRule = RandomVantagePoint(),
+    ):
+        if not len(points):
+            raise ValueError("we cannot create a node from no points")
+
+        self.radius = None
         self.right = None
         self.left = None
-        self.vantage_point = self.select_vantage_point(points)
+        self.vantage_point, points = vantage_point_rule.get(points)
 
         #  build vantage point tree
-
         if len(points) < 1:
             return
-        if len(points) <= leafsize:
+        if len(points) <= leaf_size:
             self.children = points
             return
 
         # get distances from vantage point to every point
-        distances = [distance_function(self.vantage_point, p) for p in points]
-        self.mu = np.median(distances)
+        distances = np.linalg.norm(points - self.vantage_point, axis=1)
+        self.radius = np.median(distances)
 
-        inside, outside = [], []
-        for i, point in enumerate(points):
-            if distances[i] < self.mu:
-                inside.append(point)
-            else:
-                outside.append(point)
+        inside, outside = (
+            points[distances < self.radius],
+            points[distances >= self.radius],
+        )
 
         # can be run in parallel
         if len(inside) > 0:
-            self.left = VPTree(inside, distance_function)
+            self.left = VPTree(inside, leaf_size, vantage_point_rule)
         if len(outside) > 0:
-            self.right = VPTree(outside, distance_function)
+            self.right = VPTree(outside, leaf_size, vantage_point_rule)
 
-    @staticmethod
-    def addpoint(stack, node, query_point, distance=l2_norm):
-        if node is not None:
-            dist = distance(node.vantage_point, query_point)
-            heappush(stack, (dist, node))
+    def k_nearest_neighbors(self, query_point, k: int = 1):
 
-    @staticmethod
-    def select_vantage_point(points):
-        # if len(points) <= 10:
-        return points.pop(np.random.randint(0, len(points)))
-        # else:
-        #     # traditional vantage point selection method
-        #     # picks the point with the largest spread
-        #     num_samples = num_tests = max(10, len(points) // 1000)
-        #     sampled_points = sample(points, num_samples)
-        #
-        #     best_spread = 0
-        #     best_point = None
-        #     for point in sampled_points:
-        #         rand_points = sample(points, num_tests)
-        #         distances = [distance_function(point, rand_point) for rand_point in rand_points]
-        #         mu = np.median(distances)
-        #
-        #         # can also use np.var. I think
-        #         spread = np.std(distances - mu)
-        #         if spread > best_spread:
-        #             best_spread = spread
-        #             best_point = point
-        #
-        #     points.remove(best_point)
-        #     return best_point
+        region_radius = np.inf
+        explore_queue = deque([self])
+        seen_count = 0
+        results_queue = BoundedPriorityQueue(k, query_point, l2_norm)
 
-    def k_nearest_neighbors(self, query, k=1, distance=l2_norm):
-        queue = BoundedPriorityQueue(k, query, distance)
-        tau = np.inf
-        tovisit = []
-        self.addpoint(tovisit, self, query)
-
-        seen = 0
-
-        # faster than stack
-        while tovisit:
-            dist, node = heappop(tovisit)
-            seen += 1
-            if node is None:
+        while explore_queue:
+            if (current_node := explore_queue.popleft()) is None:
                 continue
 
-            if dist < tau:
-                queue.append(node.vantage_point, dist)
-            if queue.is_full:
-                tau, _ = queue.peek()
-            if node.is_leaf:
-                seen += len(node.children)
-                for child in node.children:
-                    d = distance(child, query)
-                    queue.append(child, d)
-                if queue.is_full:
-                    tau, _ = queue.peek()
+            dist = l2_norm(current_node.vantage_point, query_point)
+            seen_count += 1
+
+            if dist < region_radius:
+                results_queue.append(current_node.vantage_point, dist)
+            if results_queue.is_full():
+                region_radius = results_queue.peek().distance
+            if current_node.is_leaf():
+                seen_count += len(current_node.children)
+                results_queue.extend(current_node.children)
+                if results_queue.is_full():
+                    region_radius = results_queue.peek().distance
                 continue
 
-            if dist < node.mu:
-                self.addpoint(tovisit, node.left, query)
-                if node.mu - dist <= tau:
-                    self.addpoint(tovisit, node.right, query)
+            if dist < current_node.radius:
+                explore_queue.append(current_node.left)
+                if current_node.radius - dist <= region_radius:
+                    explore_queue.append(current_node.right)
             else:
-                self.addpoint(tovisit, node.right, query)
-                if dist - node.mu <= tau:
-                    self.addpoint(tovisit, node.left, query)
-        return queue, seen
+                explore_queue.append(current_node.right)
+                if dist - current_node.radius <= region_radius:
+                    explore_queue.append(current_node.left)
+        return results_queue, seen_count
 
-    @property
-    def isleaf(self):
+    def is_leaf(self):
         return self.right is None and self.left is None
-
-    def height(self):
-        if self.isleaf:
-            return 0
-        left = self.left.height() if self.left is not None else 0
-        right = self.right.height() if self.right is not None else 0
-        return max(left, right) + 1
-
-    def s_value(self):
-        if self.isleaf:
-            return 0
-        left = self.left.s_value() if self.left is not None else 0
-        right = self.right.s_value() if self.right is not None else 0
-        return min(left, right) + 1
-
-    def size(self):
-        if self.isleaf:
-            return len(self.children) + 1
-        left = self.left.size() if self.left is not None else 0
-        right = self.right.size() if self.right is not None else 0
-        return left + right + 1
 
     def __repr__(self):
         return f"({self.vantage_point}, {self.left.vantage_point}, {self.right.vantage_point})"
 
 
 if __name__ == "__main__":
-    num_points = 9980
-    coords = [
-        (np.random.randint(0, 100000), np.random.randint(0, 100000))
-        for _ in range(num_points)
-    ]
-    vp = VPTree(coords, l2_norm)
-    q_point = (500, 1000)
-    print(vp.size())
-    x, total_seen = vp.k_nearest_neighbors(q_point, 4)
-    print(list(x), total_seen)
+    import doctest
 
-    # print(repr(vp))
+    doctest.testmod()

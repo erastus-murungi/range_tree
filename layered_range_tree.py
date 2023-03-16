@@ -6,7 +6,8 @@ from typing import Iterator, Optional
 import numpy as np
 
 from range2d import RangeTree2D
-from rangetree import OUT_OF_BOUNDS, Interval, Leaf, Orthotope, RangeTree
+from rangetree import OUT_OF_BOUNDS, Leaf, RangeTree
+from utils import Orthotope
 
 LEFT, RIGHT = 1, 2
 
@@ -28,7 +29,7 @@ class LayeredRangeTree(RangeTree2D):
         left: RangeTree,
         right: RangeTree,
         assoc: RangeTree | np.ndarray,
-        depth,
+        depth: int,
     ):
         super().__init__(split_value, left, right, assoc)
         self.depth = depth
@@ -153,57 +154,6 @@ class LayeredRangeTree(RangeTree2D):
 
 
 if __name__ == "__main__":
+    import doctest
 
-    def brute_algorithm(coords, x1, x2, y1, y2):
-        for x, y in coords:
-            if x1 <= x < x2 and y1 <= y < y2:
-                yield x, y
-
-    x1, x2, y1, y2 = -1, 2000, 0, 8000
-
-    # points = np.array([(4728, 2874), (4728, 473), (2598, 4011)])
-
-    # points = np.array([(1063, 6064), (1384, 477), (1298, 3993)])
-    points = np.array(
-        [
-            (3487, 607),
-            (2991, 8962),
-            (6407, 3061),
-            (7487, 7634),
-            (52, 583),
-            (9966, 8363),
-            (2349, 7102),
-            (1837, 4909),
-            (7362, 8135),
-            (3978, 5650),
-            (1753, 5981),
-            (1021, 2656),
-            (5343, 8974),
-            (3747, 1250),
-        ]
-    )
-
-    # r2d = LayeredRangeTree.construct(points)
-    # result = r2d.query(Rectangle(Interval(x1, x2), Interval(y1, y2)))
-    # res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
-    # res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
-    # if res_n != res_m:
-    #     print(r2d.pretty_str())
-    #     raise ValueError(
-    #         f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
-    #     )
-
-    num_coords = 3
-    for _ in range(100):
-        points = np.random.randint(0, 10000, (num_coords, 2))
-        r2d = LayeredRangeTree.construct(points)
-        result = list(r2d.query(Orthotope([Interval(x1, x2), Interval(y1, y2)])))
-
-        res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
-        res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
-
-        if res_n != res_m:
-            print(r2d.pretty_str())
-            raise ValueError(
-                f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
-            )
+    doctest.testmod()

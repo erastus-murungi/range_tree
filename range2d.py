@@ -4,7 +4,8 @@ from typing import Iterator
 import numpy as np
 
 from range1d import RangeTree1D
-from rangetree import OUT_OF_BOUNDS, Interval, Leaf, Orthotope, RangeTree
+from rangetree import OUT_OF_BOUNDS, Leaf, RangeTree
+from utils import Interval, Orthotope
 
 
 class RangeTree2D(RangeTree1D):

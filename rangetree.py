@@ -1,77 +1,10 @@
 from abc import ABC, abstractmethod
 from sys import maxsize
-from typing import Collection, Iterator, NamedTuple
+from typing import Iterator
 
 import numpy as np
 
-
-class Interval(NamedTuple):
-    start: float
-    end: float
-
-    def __contains__(self, item: float):
-        return self.start <= item < self.end
-
-    def is_disjoint_from(self, other: "Interval"):
-        return self.start > other.end or other.start > self.end
-
-    def contains(self, other: "Interval"):
-        return other.start >= self.start and other.end < self.end
-
-    def copy(self):
-        return Interval(self.start, self.end)
-
-
-class Orthotope(NamedTuple):
-    intervals: list[Interval]
-
-    def __contains__(self, points: Collection[float]):
-        if len(points) != len(self.intervals):
-            raise ValueError(
-                "expected the number of intervals to equal the number of points"
-            )
-        return all(value in interval for value, interval in zip(points, self.intervals))
-
-    def __iter__(self):
-        yield from self.intervals
-
-    @property
-    def x_range(self):
-        return self.intervals[0]
-
-    @property
-    def y_range(self):
-        return self.intervals[1]
-
-    def __getitem__(self, item):
-        return Orthotope(self.intervals[item.start :])
-
-    def copy(self):
-        return Orthotope([interval.copy() for interval in self.intervals])
-
-    def split(self, dim: int, split_value: float) -> tuple["Orthotope", "Orthotope"]:
-        region_right = self.copy()
-        dim_interval = self.intervals[dim]
-        if dim_interval.start <= split_value <= dim_interval.end:
-            self.intervals[dim] = Interval(dim_interval.start, split_value)
-            region_right.intervals[dim] = Interval(split_value, dim_interval.end)
-            return self, region_right
-        raise ValueError()
-
-    def contains(self, other: "Orthotope"):
-        return all(
-            my_interval.contains(other_interval)
-            for my_interval, other_interval in zip(self.intervals, other.intervals)
-        )
-
-    def is_disjoint_from(self, other: "Orthotope"):
-        return all(
-            my_interval.is_disjoint_from(other_interval)
-            for my_interval, other_interval in zip(self.intervals, other.intervals)
-        )
-
-    def __len__(self):
-        return len(self.intervals)
+from utils import Interval, Orthotope
 
 
 class RangeTree(ABC):

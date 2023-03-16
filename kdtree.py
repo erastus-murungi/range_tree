@@ -1,61 +1,19 @@
 from abc import ABC, abstractmethod
-from bisect import insort
-from operator import attrgetter, itemgetter
+from operator import itemgetter
 from sys import maxsize
-from typing import Callable, Iterator, NamedTuple, Optional
+from typing import Iterator, Optional
 
 import numpy as np
-import numpy.typing as npt
 
-from rangetree import Interval, Orthotope
-
-Point = npt.NDArray[float]
-Points = Point
-
-
-class NNResult(NamedTuple):
-    point: Point
-    distance: float
-
-
-class BoundedPriorityQueue(list[NNResult]):
-    """Fast list-based bounded priority queue."""
-
-    __slots__ = ("_capacity", "_distance_function", "_reference_point")
-
-    def __init__(
-        self,
-        capacity: int,
-        reference_point: Point,
-        distance_function: Callable[[Point, Point], float],
-    ):
-        super().__init__()
-        self._reference_point = reference_point
-        self._capacity = capacity
-        self._distance_function = distance_function
-
-    def append(self, point: Point, distance=None):
-        if not distance:
-            distance = self._distance_function(point, self._reference_point)
-        if len(self) < self._capacity or distance < self[-1].distance:
-            insort(
-                self,
-                NNResult(point, distance),
-                key=attrgetter("distance"),
-            )
-            if len(self) > self._capacity:
-                self.pop()
-
-    def extend(self, points: Points):
-        for point in points:
-            self.append(point)
-
-    def is_full(self):
-        return len(self) == self._capacity
-
-    def peek(self):
-        if len(self) > 0:
-            return self[-1]
+from utils import (
+    BoundedPriorityQueue,
+    Interval,
+    NNResult,
+    Orthotope,
+    Point,
+    Points,
+    l2_norm,
+)
 
 
 class KDNode(ABC):
@@ -115,10 +73,6 @@ class Leaf(KDNode):
 
     def __bool__(self):
         return bool(self.data.size)
-
-
-def l2_norm(a, b):
-    return np.linalg.norm(a - b)
 
 
 class InternalNode(KDNode):
