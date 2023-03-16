@@ -176,7 +176,7 @@ class InternalNode(KDNode):
     def range_search(self, query: Orthotope, region: Orthotope, cd: int, n_dims: int):
         if region.is_disjoint_from(query):
             return
-        if region.contains(query):
+        if query.contains(region):
             yield from self.report_nodes()
             return
 
@@ -212,16 +212,21 @@ class KDTree:
         if n_dims is not None:
             self._size, self._n_dims = 0, n_dims
             self._root = Leaf(np.empty((0, n_dims)))
+            self._region = Orthotope(
+                [Interval(-maxsize, maxsize) for _ in range(n_dims)]
+            )
         else:
             self._size, self._n_dims = data_points.shape
             self._root = self.build(data_points, 0, self._n_dims)
             # # calculate the size of the region
-        self._region = Orthotope(
-            [
-                Interval(self.min_value(axis), self.max_value(axis))
-                for axis in range(self._n_dims)
-            ]
-        )  # O(k lg n)
+            self._region = Orthotope(
+                [
+                    Interval(*min_max)
+                    for min_max in zip(
+                        np.min(data_points, axis=0), np.max(data_points, axis=0)
+                    )
+                ]
+            )  # O(k lg n)
 
     def build(self, data_points: Points, dim: int, n_dims: int) -> KDNode:
         # Order O(n^2 lg n) build time
