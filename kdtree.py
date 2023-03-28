@@ -60,7 +60,7 @@ class MidValueSplitRule(SplitRule):
         split_value = points[(len(points) - 1) // 2, dim]
         return (
             dim,
-            split_value[0:, dim],
+            split_value,
             points[points[:, dim] == split_value],
             points[points[:, dim] < split_value],
             points[points[:, dim] > split_value],
@@ -239,14 +239,14 @@ class KDTree:
 
         if n_dims is not None:
             self._size, self._n_dims = 0, n_dims
-            self._split_rule = SlidingMidPointRule()
+            self._split_rule = MidValueSplitRule(n_dims)
             self._root = Leaf(np.empty((0, n_dims)))
             self._region = Orthotope(
                 [Interval(-maxsize, maxsize) for _ in range(n_dims)]
             )
         else:
             self._size, self._n_dims = points.shape
-            self._split_rule = SlidingMidPointRule()
+            self._split_rule = MidValueSplitRule(n_dims)
             self._root = self.build(points, 0, self._n_dims)
             # # calculate the size of the region
             self._region = Orthotope(
