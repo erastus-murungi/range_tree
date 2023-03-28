@@ -35,7 +35,7 @@ def test_nearest_neighbor(n_iters, n_points, n_dims, rand_num_lim):
     for _ in range(n_iters):
         points = np.random.randint(0, rand_num_lim, (n_points, n_dims))
         reference_point = np.random.randint(0, rand_num_lim, (n_dims,))
-        kd_tree = KDTree(data_points=points)
+        kd_tree = KDTree(points=points)
         actual_nn = kd_tree.nearest_neighbor(reference_point).point
         expected_nn = brute_nearest_neighbor(points, reference_point, l2_norm)
         assert l2_norm(actual_nn, reference_point) == l2_norm(
@@ -51,7 +51,7 @@ def test_k_nearest_neighbors(n_iters, n_points, n_dims, rand_num_lim, k):
     for _ in range(n_iters):
         points = np.random.randint(0, rand_num_lim, (n_points, n_dims))
         reference_point = np.random.randint(0, rand_num_lim, (n_dims,))
-        kd_tree = KDTree(data_points=points)
+        kd_tree = KDTree(points=points)
         query_results = kd_tree.k_nearest_neighbors(reference_point, k)
         actual_distances = [dist for _, dist in query_results]
         expected_distances = [
@@ -75,7 +75,7 @@ def test_range_search(n_iters, n_points, n_dims, rand_num_lim, ray):
     orthotope = Orthotope([Interval(*ray) for _ in range(n_dims)])
     for _ in range(n_iters):
         points = np.random.randint(0, rand_num_lim, (n_points, n_dims))
-        kd_tree = KDTree(data_points=points)
+        kd_tree = KDTree(points=points)
         query_iter = kd_tree.range_search(orthotope)
 
         actual_in_range = list(sorted([tuple(map(int, elem)) for elem in query_iter]))

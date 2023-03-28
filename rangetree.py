@@ -44,11 +44,31 @@ class RangeTree(ABC):
         while not isinstance(v, Leaf) and (
             interval.end <= v.split_value or interval.start > v.split_value
         ):
-            v = v.left if interval.end <= v.split_value else v.right
+            v = v.less if interval.end <= v.split_value else v.greater
         return v
 
     def pretty_str(self):
         return "".join(self.yield_line("", "R"))
+
+    def __getitem__(self, item: slice | tuple):
+        """Assumes item is a slice object.
+        To search for a specific value:
+        Use that value in both endpoints. eg to search for 5, query [5:5].
+        Returns the items in the range.
+        """
+        if isinstance(item, slice):
+            start, stop = item.start, item.stop
+            if start is None:
+                start = 0
+            if stop is None:
+                stop = maxsize
+            if start > stop:
+                raise IndexError("make sure start <= stop")
+            return self.query(Orthotope([Interval(start, stop)]))
+        elif isinstance(item, tuple):
+            pass
+        else:
+            raise TypeError(f"unrecognized index {item}")
 
 
 class Leaf(RangeTree):

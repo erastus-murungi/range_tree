@@ -116,37 +116,37 @@ class LayeredRangeTree(RangeTree2D):
             if idx == (-1):
                 return
             # (∗ Follow the path to x and call 1D_RANGE_QUERY on the subtrees right of the path. ∗)
-            v = v_split.left
+            v = v_split.less
             idx_ge = v_split.assoc[idx, y_axis + LEFT]
             while idx_ge != (-1) and not isinstance(v, Leaf):
                 if box.x_range.start <= v.split_value:
                     # report right subtree
                     yield from self.report_nodes(
-                        v.right, box, v.assoc[idx_ge, y_axis + RIGHT]
+                        v.greater, box, v.assoc[idx_ge, y_axis + RIGHT]
                     )
                     idx_ge = v.assoc[idx_ge, y_axis + LEFT]
-                    v = v.left
+                    v = v.less
                 else:
                     idx_ge = v.assoc[idx_ge, y_axis + RIGHT]
-                    v = v.right
+                    v = v.greater
 
             if isinstance(v, Leaf) and v.point in box:
                 yield v.point
 
             # now we follow right side
-            v = v_split.right
+            v = v_split.greater
             idx_ge = v_split.assoc[idx, y_axis + RIGHT]
             while idx_ge != (-1) and not isinstance(v, Leaf):
                 if v.split_value < box.x_range.end:
                     # report left subtree
                     yield from self.report_nodes(
-                        v.left, box, v.assoc[idx_ge, y_axis + LEFT]
+                        v.less, box, v.assoc[idx_ge, y_axis + LEFT]
                     )
                     idx_ge = v.assoc[idx_ge, y_axis + RIGHT]
-                    v = v.right
+                    v = v.greater
                 else:
                     idx_ge = v.assoc[idx_ge, y_axis + LEFT]
-                    v = v.left
+                    v = v.less
 
             # check whether this point should be included too
             if isinstance(v, Leaf) and v.point in box:

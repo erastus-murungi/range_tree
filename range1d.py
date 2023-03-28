@@ -1,4 +1,3 @@
-import statistics
 from functools import cache
 from sys import maxsize
 from typing import Iterator
@@ -11,38 +10,38 @@ from utils import Interval, Orthotope
 
 
 class RangeTree1D(RangeTree):
-    __slots__ = ("split_value", "left", "right")
+    __slots__ = ("split_value", "less", "greater")
 
     def __init__(
         self,
         split_value: float,
-        left: RangeTree,
-        right: RangeTree,
+        less: RangeTree,
+        greater: RangeTree,
     ):
         self.split_value = split_value
-        self.left = left
-        self.right = right
+        self.less = less
+        self.greater = greater
 
     @cache
     def find_split_value(self) -> float:
         return max(
             self.split_value,
-            self.left.find_split_value(),
-            self.right.find_split_value(),
+            self.less.find_split_value(),
+            self.greater.find_split_value(),
         )
 
     def __repr__(self):
         return f"{type(self).__name__}({self.split_value})"
 
     def report_leaves(self):
-        yield from self.left.report_leaves()
-        yield from self.right.report_leaves()
+        yield from self.less.report_leaves()
+        yield from self.greater.report_leaves()
 
     def yield_line(self, indent: str, prefix: str) -> Iterator[str]:
         yield f"{indent}{prefix}----{self}\n"
         indent += "     " if prefix == "R" else "|    "
-        yield from self.left.yield_line(indent, "L")
-        yield from self.right.yield_line(indent, "R")
+        yield from self.less.yield_line(indent, "L")
+        yield from self.greater.yield_line(indent, "R")
 
     @staticmethod
     def construct(values, axis=0) -> "RangeTree1D":
@@ -94,11 +93,11 @@ class RangeTree1D(RangeTree):
                 stack.extend(
                     (
                         (
-                            current_node.right,
+                            current_node.greater,
                             Interval(current_node.split_value, x_range.end),
                         ),
                         (
-                            current_node.left,
+                            current_node.less,
                             Interval(x_range.start, current_node.split_value),
                         ),
                     )
@@ -118,29 +117,29 @@ class RangeTree1D(RangeTree):
             if v_split.split_value in interval:  # inclusive version
                 yield from v_split.report_leaves()
         else:
-            v = v_split.left
+            v = v_split.less
             while not isinstance(v, Leaf):
                 if v.split_value >= interval.start:
                     # report right subtree
-                    yield from v.right.report_leaves()
-                    v = v.left
+                    yield from v.greater.report_leaves()
+                    v = v.less
                 else:
-                    v = v.right
+                    v = v.greater
             # v is now a leaf
             if v.split_value in interval:
                 yield v.point
             # now we follow right side
-            v = v_split.right
+            v = v_split.greater
             while not isinstance(v, Leaf):
                 if v.split_value < interval.end:
                     # report left subtree
-                    yield from v.left.report_leaves()
+                    yield from v.less.report_leaves()
                     # it is possible to traverse to an external node
-                    if v.right is OUT_OF_BOUNDS:
+                    if v.greater is OUT_OF_BOUNDS:
                         return
-                    v = v.right
+                    v = v.greater
                 else:
-                    v = v.left
+                    v = v.less
             # check whether this point should be included too
             if v.split_value in interval:
                 yield from v.report_leaves()
@@ -148,67 +147,8 @@ class RangeTree1D(RangeTree):
     def query(self, item: Orthotope, axis: int = 0):
         yield from self.query_axis(item.intervals[axis])
 
-    def __getitem__(self, item: slice):
-        """Assumes item is a slice object.
-        To search for a specific value:
-        Use that value in both endpoints. eg to search for 5, query [5:5].
-        Returns the items in the range.
-        """
-        assert isinstance(item, slice), print(item)
-
-        start, stop = item.start, item.stop
-        if start is None:
-            start = 0
-        if stop is None:
-            stop = maxsize
-        if start > stop:
-            raise IndexError("make sure start <= stop")
-
-        return self.query_axis(Interval(start, stop))
-
-
-def brute(points, x1, x2):
-    for point in points:
-        if x1 <= point < x2:
-            yield point
-
 
 if __name__ == "__main__":
-    from random import randint
-    from time import monotonic_ns
+    import doctest
 
-    num_points = 5
-    x1, x2 = 3000, 7000
-
-    times1 = []
-    times2 = []
-    #
-    for _ in range(10000):
-        points = np.random.randint(0, 10000, (num_points, 1))
-        rtree = RangeTree1D.construct(points)
-
-        start = monotonic_ns()
-        res_n = list(rtree.query_axis_recursive(Interval(x1, x2)))
-        times1.append(monotonic_ns() - start)
-
-        start = monotonic_ns()
-        res_n = list(rtree.query_axis(Interval(x1, x2)))
-        times2.append(monotonic_ns() - start)
-
-        res_m = list(sorted(brute(points, x1, x2)))
-        res_n = list(rtree.query_axis_recursive(Interval(x1, x2)))
-        if list(sorted(res_n)) != list(sorted(res_m)):
-            raise ValueError(
-                f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
-            )
-    print("query axis recursive", statistics.mean(times1))
-    print("query axis", statistics.mean(times2))
-
-    # points = np.array([(9084,), (5551,), (1139,), (9227,), (3000,)])
-    # rtree = RangeTree1D.construct(points)
-    # print(RangeTree1D.find_split_value.cache_info())
-    # print(rtree.pretty_str())
-    # res_n = list(rtree.query_axis_recursive(Interval(x1, x2), Interval(-maxsize, maxsize)))
-    # res_m = list(sorted(brute(points, x1, x2)))
-    # if list(sorted(res_n)) != list(sorted(res_m)):
-    #     raise ValueError(f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}")
+    doctest.testmod()

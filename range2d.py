@@ -5,7 +5,7 @@ import numpy as np
 
 from range1d import RangeTree1D
 from rangetree import OUT_OF_BOUNDS, Leaf, RangeTree
-from utils import Interval, Orthotope
+from utils import Orthotope
 
 
 class RangeTree2D(RangeTree1D):
@@ -57,88 +57,34 @@ class RangeTree2D(RangeTree1D):
                 yield v_split.point
         else:
             # (∗ Follow the path to x and call 1D_RANGE_QUERY on the subtrees right of the path. ∗)
-            v = v_split.left
+            v = v_split.less
             while not isinstance(v, Leaf):
                 if box.x_range.start <= v.split_value:
-                    yield from v.right.assoc.query(box, axis + 1)
-                    v = v.left
+                    yield from v.greater.assoc.query(box, axis + 1)
+                    v = v.less
                 else:
-                    v = v.right
+                    v = v.greater
 
             #  Check if the point stored at ν must be reported.
             if v.point in box:
                 yield v.point
 
             # traverse the right subtree of v_split
-            v = v_split.right
+            v = v_split.greater
             while not isinstance(v, Leaf):
                 if v is OUT_OF_BOUNDS:
                     return
                 if v.split_value < box.x_range.end:
-                    yield from v.left.assoc.query(box, axis + 1)
-                    v = v.right
+                    yield from v.less.assoc.query(box, axis + 1)
+                    v = v.greater
                 else:
-                    v = v.left
+                    v = v.less
 
             if v.point in box:
                 yield v.point
 
 
 if __name__ == "__main__":
-    from random import randint
+    import doctest
 
-    def brute_algorithm(coords, x1, x2, y1, y2):
-        for x, y in coords:
-            if x1 <= x < x2 and y1 <= y < y2:
-                yield x, y
-
-    x1, x2, y1, y2 = -1, 3000, 0, 8000
-
-    num_coords = 6
-    for _ in range(1000):
-        points = np.random.randint(0, 10000, (num_coords, 2))
-        r2d = RangeTree2D.construct(points)
-        result = r2d.query(Orthotope([Interval(x1, x2), Interval(y1, y2)]))
-
-        res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
-        res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
-
-        if res_n != res_m:
-            print(r2d.pretty_str())
-            raise ValueError(
-                f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
-            )
-
-    # import matplotlib.pyplot as plt
-
-    # points = np.array(
-    #     [
-    #         (7417, 8462),
-    #         (884, 2521),
-    #         (2000, 4728),
-    #         (1134, 7744),
-    #         (138, 5405),
-    #         (2162, 7793),
-    #     ]
-    # )
-    #
-    # r2d = RangeTree2D.construct(points)
-    # print(r2d.pretty_str())
-    # result = r2d.query(HyperRectangle([Interval(x1, x2), Interval(y1, y2)]))
-    #
-    # res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
-    # res_m = list(sorted(brute_algorithm(points, x1, x2, y1, y2)))
-
-    # plt.scatter(points[:, 0], points[:, 1], label='all')
-    # plt.scatter(np.array(res_n)[:, 0], np.array(res_n)[:, 1], label='range tree')
-    # plt.scatter(np.array(res_m)[:, 0], np.array(res_m)[:, 1], label='brute force')
-    # plt.gca().add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, facecolor="none", ec='k', lw=2))
-    # plt.legend()
-    # plt.show()
-
-    # for point in r2d.query(Rectangle(Interval(x1, x2), Interval(y1, y2))):
-    #     print(point)
-    #
-    # if res_n != res_m:
-    #     print(r2d.pretty_str())
-    #     raise ValueError(f"\n{res_n}\n {res_m}\n {list(points)}")
+    doctest.testmod()

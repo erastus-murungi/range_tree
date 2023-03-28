@@ -35,7 +35,7 @@ class KDNode(ABC):
         pass
 
     @abstractmethod
-    def range_search(self, query: Orthotope, region: Orthotope, cd: int, n_dims: int):
+    def range_search(self, query: Orthotope, region: Orthotope):
         pass
 
     @abstractmethod
@@ -44,6 +44,65 @@ class KDNode(ABC):
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.data})"
+
+
+class SplitRule(ABC):
+    def get(self, points, dim) -> tuple[int, float, Points, Points, Points]:
+        pass
+
+
+class MidValueSplitRule(SplitRule):
+    def __init__(self, n_dims):
+        self.n_dims = n_dims
+
+    def get(self, points, dim) -> tuple[int, float, Points, Points, Points]:
+        points = points[points[:, dim].argsort()]
+        split_value = points[(len(points) - 1) // 2, dim]
+        return (
+            dim,
+            split_value[0:, dim],
+            points[points[:, dim] == split_value],
+            points[points[:, dim] < split_value],
+            points[points[:, dim] > split_value],
+        )
+
+
+class SlidingMidPointRule(SplitRule):
+    def get(self, points: Points, _) -> tuple[int, float, Points, Points, Points]:
+        minimums, maximums = np.amin(points, axis=0), np.amax(points, axis=0)
+        dim: int = np.argmax(maximums - minimums)
+        min_val, max_val = minimums[dim], maximums[dim]
+        if max_val == min_val:
+            raise ValueError("all points identical, put them in a leaf")
+            # all points are identical; warn user?
+        # sliding midpoint rule; see Maneewongvatana and Mount 1999
+        # for arguments that this is a good idea.
+        split = (max_val + min_val) / 2
+        less_idx = np.nonzero(points[:, dim] <= split)[0]
+        greater_idx = np.nonzero(points[:, dim] > split)[0]
+        if len(less_idx) == 0:
+            split = np.amin(points[:, dim])
+            less_idx = np.nonzero(points[:, dim] <= split)[0]
+            greater_idx = np.nonzero(points[:, dim] > split)[0]
+        if len(greater_idx) == 0:
+            split = np.amax(points[:, dim])
+            less_idx = np.nonzero(points[:, dim] < split)[0]
+            greater_idx = np.nonzero(points[:, dim] >= split)[0]
+        if len(less_idx) == 0:
+            # _still_ zero? all must have the same value
+            if not np.all(points[:, dim] == points[0, dim]):
+                raise ValueError(f"Troublesome data array: {points[:, dim]}")
+            points = points[0, dim]
+            less_idx = np.arange(len(points[:, dim]) - 1)
+            greater_idx = np.array([len(points[:, dim]) - 1])
+
+        return (
+            dim,
+            split,
+            np.empty((0, points.shape[1])),
+            points[less_idx],
+            points[greater_idx],
+        )
 
 
 class Leaf(KDNode):
@@ -63,10 +122,8 @@ class Leaf(KDNode):
     def yield_line(self, indent: str, prefix: str) -> Iterator[str]:
         yield f"{indent}{prefix}----{self}\n"
 
-    def range_search(
-        self, orthotope: Orthotope, region: Orthotope, cd: int, n_dims: int
-    ):
-        yield from filter(lambda data: data in orthotope, self.data)
+    def range_search(self, query: Orthotope, region: Orthotope):
+        yield from filter(lambda data: data in query, self.data)
 
     def report_nodes(self):
         yield from self.data
@@ -76,12 +133,21 @@ class Leaf(KDNode):
 
 
 class InternalNode(KDNode):
-    __slots__ = ("left", "right")
+    __slots__ = ("split_dim", "less", "greater", "split_value")
 
-    def __init__(self, data: np.ndarray, left: KDNode, right: KDNode):
+    def __init__(
+        self,
+        split_dim: int,
+        split_value: float,
+        data: np.ndarray,
+        less: KDNode,
+        greater: KDNode,
+    ):
         super().__init__(data)
-        self.left = left
-        self.right = right
+        self.split_dim = split_dim
+        self.split_value: float = split_value
+        self.less = less
+        self.greater = greater
 
     def min(self, dim: int, cd: int, n_dims: int):
         # T splits on the dimension we’re searching
@@ -89,14 +155,16 @@ class InternalNode(KDNode):
         base = min(self.data, key=itemgetter(dim))
         if cd == dim:
             return min(
-                base, self.left.min(dim, (cd + 1) % n_dims, n_dims), key=itemgetter(dim)
+                base,
+                self.less.min(dim, (cd + 1) % n_dims, n_dims),
+                key=itemgetter(dim),
             )
         # T splits on a different dimension
         # => have to search both subtrees
         else:
             return min(
-                self.left.min(dim, (cd + 1) % n_dims, n_dims),
-                self.right.min(dim, (cd + 1) % n_dims, n_dims),
+                self.less.min(dim, (cd + 1) % n_dims, n_dims),
+                self.greater.min(dim, (cd + 1) % n_dims, n_dims),
                 base,
                 key=itemgetter(dim),
             )
@@ -108,15 +176,15 @@ class InternalNode(KDNode):
         if cd == dim:
             return max(
                 base,
-                self.right.max(dim, (cd + 1) % n_dims, n_dims),
+                self.greater.max(dim, (cd + 1) % n_dims, n_dims),
                 key=itemgetter(dim),
             )
         # T splits on a different dimension
         # => have to search both subtrees
         else:
             return max(
-                self.left.max(dim, (cd + 1) % n_dims, n_dims),
-                self.right.max(dim, (cd + 1) % n_dims, n_dims),
+                self.less.max(dim, (cd + 1) % n_dims, n_dims),
+                self.greater.max(dim, (cd + 1) % n_dims, n_dims),
                 base,
                 key=itemgetter(dim),
             )
@@ -124,10 +192,10 @@ class InternalNode(KDNode):
     def yield_line(self, indent: str, prefix: str) -> Iterator[str]:
         yield f"{indent}{prefix}----{self}\n"
         indent += "     " if prefix == "R" else "|    "
-        yield from self.left.yield_line(indent, "L")
-        yield from self.right.yield_line(indent, "R")
+        yield from self.less.yield_line(indent, "L")
+        yield from self.greater.yield_line(indent, "R")
 
-    def range_search(self, query: Orthotope, region: Orthotope, cd: int, n_dims: int):
+    def range_search(self, query: Orthotope, region: Orthotope):
         if region.is_disjoint_from(query):
             return
         if query.contains(region):
@@ -136,25 +204,31 @@ class InternalNode(KDNode):
 
         yield from filter(lambda point: point in query, self.data)
 
-        next_cd = (cd + 1) % n_dims
-
-        region_left, region_right = region.split(cd, self.data[0, cd])
-        yield from self.left.range_search(query, region_left, next_cd, n_dims)
-        yield from self.right.range_search(query, region_right, next_cd, n_dims)
+        region_left, region_right = region.split(self.split_dim, self.split_value)
+        yield from self.less.range_search(query, region_left)
+        yield from self.greater.range_search(query, region_right)
 
     def report_nodes(self):
-        yield from self.left.report_nodes()
+        yield from self.less.report_nodes()
         yield from self.data
-        yield from self.right.report_nodes()
+        yield from self.greater.report_nodes()
 
 
 class KDTree:
-    __slots__ = ("_size", "_n_dims", "_root", "_region", "_leaf_size", "_dist_fn")
+    __slots__ = (
+        "_size",
+        "_n_dims",
+        "_root",
+        "_region",
+        "_leaf_size",
+        "_dist_fn",
+        "_split_rule",
+    )
 
     def __init__(
         self,
         *,
-        data_points: Points = None,
+        points: Points = None,
         n_dims: Optional[int] = None,
         dist_fn=l2_norm,
         leaf_size: int = 1,
@@ -165,49 +239,43 @@ class KDTree:
 
         if n_dims is not None:
             self._size, self._n_dims = 0, n_dims
+            self._split_rule = SlidingMidPointRule()
             self._root = Leaf(np.empty((0, n_dims)))
             self._region = Orthotope(
                 [Interval(-maxsize, maxsize) for _ in range(n_dims)]
             )
         else:
-            self._size, self._n_dims = data_points.shape
-            self._root = self.build(data_points, 0, self._n_dims)
+            self._size, self._n_dims = points.shape
+            self._split_rule = SlidingMidPointRule()
+            self._root = self.build(points, 0, self._n_dims)
             # # calculate the size of the region
             self._region = Orthotope(
                 [
                     Interval(*min_max)
-                    for min_max in zip(
-                        np.min(data_points, axis=0), np.max(data_points, axis=0)
-                    )
+                    for min_max in zip(np.min(points, axis=0), np.max(points, axis=0))
                 ]
             )  # O(k lg n)
 
-    def build(self, data_points: Points, dim: int, n_dims: int) -> KDNode:
+    def build(self, points: Points, dim: int, n_dims: int) -> KDNode:
         # Order O(n^2 lg n) build time
         # Can be sped up using a linear time median_low finding algorithm
         # Or maintaining a k sorted lists of points to enable quick median finding. The construction of time f such
         # an algorithm is O(k nlg n), where k is the dimension
 
         # if all points are the same, just put them in the same leaf node
-        if len(data_points) <= self._leaf_size or np.all(
-            data_points[0, dim] == data_points[:, dim]
-        ):
-            return Leaf(data_points)
+        if len(points) <= self._leaf_size or np.all(points[0, dim] == points[:, dim]):
+            return Leaf(points)
 
-        data_points = data_points[data_points[:, dim].argsort()]
-        split_value = data_points[(len(data_points) - 1) // 2, dim]
+        split_dim, split_value, location, left, right = self._split_rule.get(
+            points, dim
+        )
+
         return InternalNode(
-            data_points[data_points[:, dim] == split_value],
-            self.build(
-                data_points[data_points[:, dim] < split_value],
-                (dim + 1) % n_dims,
-                n_dims,
-            ),
-            self.build(
-                data_points[data_points[:, dim] > split_value],
-                (dim + 1) % n_dims,
-                n_dims,
-            ),
+            split_dim,
+            split_value,
+            location,
+            self.build(left, (dim + 1) % n_dims, n_dims),
+            self.build(right, (dim + 1) % n_dims, n_dims),
         )
 
     def insert(self, point):
@@ -217,9 +285,9 @@ class KDTree:
         def insert_impl(data: np.ndarray, node: KDNode, cd: int):
             if isinstance(node, Leaf):
                 return self.build(np.r_[node.data, data[None, :]], cd, self._n_dims)
-            elif data[cd] == node.data[0, cd]:
+            elif data[cd] == node.split_value:
                 node.data = np.r_[node.data, data[None, :]]
-            elif data[cd] < node.data[0, cd]:
+            elif data[cd] < node.split_value:
                 node.left = insert_impl(data, node.left, (cd + 1) % self._n_dims)
             else:
                 node.right = insert_impl(data, node.right, (cd + 1) % self._n_dims)
@@ -242,9 +310,9 @@ class KDTree:
                 return node
             if isinstance(node, InternalNode):
                 if point[dim] < node.data[0, dim]:
-                    return access_impl(node.left, (dim + 1) % self._n_dims)
+                    return access_impl(node.less, (dim + 1) % self._n_dims)
                 else:
-                    return access_impl(node.right, (dim + 1) % self._n_dims)
+                    return access_impl(node.greater, (dim + 1) % self._n_dims)
             return default
 
         return access_impl(self._root, 0)
@@ -296,14 +364,14 @@ class KDTree:
             if isinstance(node, InternalNode):
                 axis = depth % self._n_dims
 
-                if point[axis] <= node.data[0, axis]:
-                    close, away = node.left, node.right
+                if point[axis] <= node.split_value:
+                    close, away = node.less, node.greater
                 else:
-                    close, away = node.right, node.left
+                    close, away = node.greater, node.less
 
                 search(node=close, depth=depth + 1)
 
-                if self._dist_fn(node.data[0, axis], point[axis]) < best.distance:
+                if self._dist_fn(node.split_value, point[axis]) < best.distance:
                     search(node=away, depth=depth + 1)
 
         search(node=self._root, depth=0)
@@ -315,29 +383,27 @@ class KDTree:
 
         queue = BoundedPriorityQueue(k, point, self._dist_fn)
 
-        def search(*, node: KDNode, depth: int):
+        def search(*, node: KDNode):
             nonlocal queue
 
             queue.extend(node.data)
 
             if isinstance(node, InternalNode):
-                axis = depth % self._n_dims
-
-                if point[axis] <= node.data[0, axis]:
-                    close, away = node.left, node.right
+                if point[node.split_dim] <= node.split_value:
+                    close, away = node.less, node.greater
                 else:
-                    close, away = node.right, node.left
+                    close, away = node.greater, node.less
 
-                search(node=close, depth=depth + 1)
+                search(node=close)
 
                 if (
                     not queue.is_full()
-                    or self._dist_fn(node.data[0, axis], point[axis])
+                    or self._dist_fn(node.split_value, point[node.split_dim])
                     < queue.peek().distance
                 ):
-                    search(node=away, depth=depth + 1)
+                    search(node=away)
 
-        search(node=self._root, depth=0)
+        search(node=self._root)
         # return [NNResult(item, dist) for dist, item in queue]
         return queue
 
@@ -393,7 +459,7 @@ class KDTree:
                                 node.right = remove_impl(node.right, data, next_cd)
                         break
                 else:
-                    if query_point[cd] < node.data[0, cd]:
+                    if query_point[cd] < node.split_value:
                         node.left = remove_impl(node.left, query_point, next_cd)
                     else:
                         node.right = remove_impl(node.right, query_point, next_cd)
@@ -410,7 +476,7 @@ class KDTree:
     def range_search(self, query: Orthotope):
         """Returns all the nodes in the given range.
         The perks of KD-Trees set in when the subtrees are augmented."""
-        yield from self._root.range_search(query, self._region.copy(), 0, self._n_dims)
+        yield from self._root.range_search(query, self._region.copy())
 
     def pretty_str(self):
         return "".join(self._root.yield_line("", "R"))

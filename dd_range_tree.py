@@ -6,7 +6,7 @@ import numpy as np
 from layered_range_tree import LayeredRangeTree
 from range1d import RangeTree1D
 from range2d import RangeTree2D
-from rangetree import OUT_OF_BOUNDS, Interval, Leaf, Orthotope, RangeTree
+from rangetree import OUT_OF_BOUNDS, Leaf, Orthotope, RangeTree
 
 
 class DDRangeTree(RangeTree2D):
@@ -40,7 +40,7 @@ class DDRangeTree(RangeTree2D):
             return DDRangeTree
 
         def construct_impl(points, depth: int):
-            if points._size == 0:
+            if points.size == 0:
                 return OUT_OF_BOUNDS
             elif len(points) == 1:
                 return Leaf(points[0], depth)
@@ -66,88 +66,37 @@ class DDRangeTree(RangeTree2D):
             if v_split.point in hyper_rectangle:
                 yield v_split.point
         else:
-            v = v_split.left
+            v = v_split.less
             while not isinstance(v, Leaf):
                 if v.split_value >= x_range.start:
                     # report right subtree
-                    yield from v.right.query(
+                    yield from v.greater.query(
                         hyper_rectangle,
                     )
-                    v = v.left
+                    v = v.less
                 else:
-                    v = v.right
+                    v = v.greater
             # v is now a leaf
             if v.point in hyper_rectangle:
                 yield v.point
             # now we follow right side
-            v = v_split.right
+            v = v_split.greater
             while not isinstance(v, Leaf):
                 if v is OUT_OF_BOUNDS:
                     return
                 if v.split_value < x_range.end:
                     # report left subtree
-                    yield from v.left.query(hyper_rectangle)
+                    yield from v.less.query(hyper_rectangle)
                     # it is possible to traverse to an external node
-                    v = v.right
+                    v = v.greater
                 else:
-                    v = v.left
+                    v = v.less
             # check whether this point should be included too
             if v.point in hyper_rectangle:
                 yield v.point
 
 
-def brute_algorithm(coords, rectangle):
-    for coord in coords:
-        if all(x in interval for x, interval in zip(coord, rectangle)):
-            yield tuple(coord)
-
-
 if __name__ == "__main__":
+    import doctest
 
-    start, end = 0, 7000
-
-    dimensions = 4
-    n_coords = 20
-    for _ in range(100):
-        points = np.random.randint(0, 10000, (n_coords, dimensions))
-        r2d = DDRangeTree.construct(points)
-        rectangle = Orthotope([Interval(start, end) for _ in range(dimensions)])
-        result = r2d.query(rectangle)
-
-        res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
-        res_m = list(sorted(brute_algorithm(points, rectangle)))
-
-        if res_n != res_m:
-            print(r2d.pretty_str())
-            raise ValueError(
-                f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
-            )
-
-    # points = np.array(
-    #     [
-    #         (658, 887, 4316, 3197),
-    #         (5253, 8682, 8034, 8963),
-    #         (545, 8267, 8317, 1488),
-    #         (2237, 709, 8149, 9034),
-    #         (6351, 7637, 2006, 8695),
-    #         (2881, 3866, 5785, 8742),
-    #         (3930, 9347, 8664, 1383),
-    #         (7057, 9274, 7207, 6310),
-    #         (3562, 6999, 5495, 1149),
-    #         (4381, 8845, 2782, 1130),
-    #     ]
-    # )
-    # r2d = DDRangeTree.construct(points)
-    # print(r2d.pretty_str())
-    # rectangle = HyperRectangle([Interval(start, end) for _ in range(points.shape[1])])
-    # result = r2d.query(rectangle)
-    # # for r in result:
-    # #     print(r)
-    #
-    # res_n = list(sorted([tuple(map(int, elem)) for elem in result]))
-    # res_m = list(sorted(brute_algorithm(points, rectangle)))
-    #
-    # if res_n != res_m:
-    #     raise ValueError(
-    #         f"\n{res_n}\n {res_m}\n {[tuple(map(int, elem)) for elem in points]}"
-    #     )
+    doctest.testmod()
